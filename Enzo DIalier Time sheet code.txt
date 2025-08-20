@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enzo Dialer Time Sheet</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      padding: 30px;
+      text-align: center;
+      color: white;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 10px 15px;
+      border-radius: 25px;
+      cursor: pointer;
+      font-size: 0.9em;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+    }
+
+    .theme-toggle:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+    }
+
+    .settings-bar {
+      background: #f8f9fa;
+      padding: 20px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #e9ecef;
+      transition: all 0.3s ease;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .input-group label {
+      font-weight: 600;
+      color: #495057;
+      font-size: 0.9em;
+      transition: all 0.3s ease;
+    }
+
+    .input-group input {
+      padding: 10px;
+      border: 2px solid #e9ecef;
+      border-radius: 8px;
+      font-size: 1em;
+      transition: all 0.3s ease;
+      width: 120px;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: #4facfe;
+      box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+    }
+
+    .main-content {
+      padding: 30px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      margin-bottom: 30px;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      transition: all 0.3s ease;
+    }
+
+    th {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.9em;
+      letter-spacing: 0.5px;
+      transition: all 0.3s ease;
+    }
+
+    td {
+      padding: 15px 10px;
+      border-bottom: 1px solid #e9ecef;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    tbody tr:hover {
+      background-color: #f8f9fa;
+      transform: translateY(-1px);
+      transition: all 0.2s ease;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #f8f9fa;
+    }
+
+    tbody tr:nth-child(even):hover {
+      background-color: #e9ecef;
+    }
+
+    td input {
+      width: 100px;
+      padding: 8px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      text-align: center;
+      font-size: 0.9em;
+      transition: all 0.3s ease;
+    }
+
+    td input:focus {
+      outline: none;
+      border-color: #4facfe;
+      box-shadow: 0 0 0 2px rgba(79, 172, 254, 0.2);
+    }
+
+    td input[type="date"] {
+      width: 140px;
+    }
+
+    .delete-btn {
+      background: #ff4757;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.8em;
+      transition: all 0.3s ease;
+    }
+
+    .delete-btn:hover {
+      background: #ff3838;
+      transform: scale(1.05);
+    }
+
+    .summary-section {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 30px;
+      border-radius: 15px;
+      color: white;
+      margin-bottom: 30px;
+      transition: all 0.3s ease;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .summary-item {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+
+    .summary-item h3 {
+      font-size: 0.9em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      opacity: 0.9;
+    }
+
+    .summary-item .value {
+      font-size: 2em;
+      font-weight: bold;
+    }
+
+    .grand-total {
+      text-align: center;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 10px;
+      backdrop-filter: blur(10px);
+    }
+
+    .grand-total h2 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-bottom: 30px;
+    }
+
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 25px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+      color: white;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+      color: white;
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+      color: white;
+    }
+
+    .btn-info {
+      background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%);
+      color: #333;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+    }
+
+    .history-section {
+      background: #f8f9fa;
+      padding: 30px;
+      border-radius: 15px;
+      margin-top: 30px;
+      transition: all 0.3s ease;
+    }
+
+    .history-section h2 {
+      color: #495057;
+      margin-bottom: 20px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    .history-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .history-item {
+      background: white;
+      padding: 15px;
+      margin-bottom: 10px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .history-item:hover {
+      transform: translateX(5px);
+      transition: all 0.3s ease;
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #28a745;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transform: translateX(300px);
+      transition: all 0.3s ease;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      transform: translateX(0);
+    }
+
+    /* Dark Mode Styles */
+    body.dark-mode {
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    }
+
+    body.dark-mode .container {
+      background: #2c3e50;
+      color: #ecf0f1;
+    }
+
+    body.dark-mode .header {
+      background: linear-gradient(135deg, #34495e 0%, #2c3e50 100%);
+    }
+
+    body.dark-mode .settings-bar {
+      background: #34495e;
+      border-bottom: 1px solid #4a5f7a;
+    }
+
+    body.dark-mode .input-group label {
+      color: #bdc3c7;
+    }
+
+    body.dark-mode .input-group input {
+      background: #4a5f7a;
+      border: 2px solid #5a6f8a;
+      color: #ecf0f1;
+    }
+
+    body.dark-mode .input-group input:focus {
+      border-color: #3498db;
+      box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
+    }
+
+    body.dark-mode .input-group input[type="checkbox"] {
+      background: #4a5f7a;
+      border: 2px solid #5a6f8a;
+    }
+
+    body.dark-mode .input-group input[type="checkbox"]:checked {
+      background: #3498db;
+      border-color: #3498db;
+    }
+
+    body.dark-mode table {
+      background: #2c3e50;
+    }
+
+    body.dark-mode th {
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    }
+
+    body.dark-mode td {
+      border-bottom: 1px solid #4a5f7a;
+      color: #ecf0f1;
+    }
+
+    body.dark-mode tbody tr:hover {
+      background-color: #4a5f7a;
+    }
+
+    body.dark-mode tbody tr:nth-child(even) {
+      background-color: #3a4f6a;
+    }
+
+    body.dark-mode tbody tr:nth-child(even):hover {
+      background-color: #4a5f7a;
+    }
+
+    body.dark-mode td input {
+      background: #4a5f7a;
+      border: 2px solid #5a6f8a;
+      color: #ecf0f1;
+    }
+
+    body.dark-mode td input:focus {
+      border-color: #3498db;
+      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.3);
+    }
+
+    body.dark-mode .summary-section {
+      background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+    }
+
+    body.dark-mode .history-section {
+      background: #34495e;
+    }
+
+    body.dark-mode .history-section h2 {
+      color: #bdc3c7;
+    }
+
+    body.dark-mode .history-item {
+      background: #4a5f7a;
+      color: #ecf0f1;
+    }
+
+    body.dark-mode .toast {
+      background: #27ae60;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        margin: 10px;
+        border-radius: 10px;
+      }
+      
+      .header h1 {
+        font-size: 2em;
+      }
+      
+      .theme-toggle {
+        position: static;
+        margin-bottom: 20px;
+        display: inline-block;
+      }
+      
+      .settings-bar {
+        padding: 15px;
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      .controls {
+        flex-direction: column;
+        align-items: center;
+      }
+      
+      .btn {
+        width: 100%;
+        max-width: 200px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark Mode</button>
+      <h1>🕐 Enzo Dialer Time Sheet</h1>
+      <p>Time Tracking System</p>
+    </div>
+
+    <div class="settings-bar">
+      <div class="input-group">
+        <label>Employee Name</label>
+        <input type="text" id="employeeName" value="Enzo" placeholder="Enter name">
+      </div>
+      <div class="input-group">
+        <label>Hourly Rate (USD)</label>
+        <input type="number" id="hourlyRate" value="3" step="0.01" min="0">
+      </div>
+      <div class="input-group">
+        <label>Bonus (USD)</label>
+        <input type="number" id="bonus" value="0" step="0.01" min="0">
+      </div>
+      <div class="input-group">
+        <label>Payment Calculation</label>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+          <label style="display: flex; align-items: center; gap: 5px; font-weight: normal; cursor: pointer;">
+            <input type="checkbox" id="includeBreaks" onchange="updateTotals()" style="width: auto;">
+            Include breaks in payment
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="table-container">
+        <table id="timeSheet">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Working Hours</th>
+              <th>Break Hours</th>
+              <th>Total Hours</th>
+              <th>Amount (USD)</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="summary-section">
+        <div class="summary-grid">
+          <div class="summary-item">
+            <h3>Total Working Hours</h3>
+            <div class="value" id="totalWorkingHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Total Break Hours</h3>
+            <div class="value" id="totalBreakHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Total Hours</h3>
+            <div class="value" id="totalHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Base Pay</h3>
+            <div class="value" id="basePay">$0.00</div>
+          </div>
+        </div>
+        <div class="grand-total">
+          <h2>Grand Total: $<span id="totalValue">0.00</span></h2>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-primary" onclick="addDay()">📅 Add Day</button>
+        <button class="btn btn-primary" onclick="addWeek()">📆 Add Week</button>
+        <button class="btn btn-success" onclick="saveHistory()">💾 Save History</button>
+        <button class="btn btn-warning" onclick="downloadPDF()">📄 Download PDF</button>
+        <button class="btn btn-info" onclick="downloadCSV()">📊 Download CSV</button>
+        <button class="btn btn-info" onclick="downloadXLSX()">📈 Download XLSX</button>
+        <button class="btn btn-warning" onclick="clearAll()">🗑️ Clear All</button>
+      </div>
+
+      <div class="history-section">
+        <h2>📋 Payment History</h2>
+        <div id="history" class="history-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let historyData = [];
+    let isDarkMode = false;
+
+    function toggleTheme() {
+      isDarkMode = !isDarkMode;
+      const body = document.body;
+      const toggleBtn = document.querySelector('.theme-toggle');
+      
+      if (isDarkMode) {
+        body.classList.add('dark-mode');
+        toggleBtn.innerHTML = '☀️ Light Mode';
+      } else {
+        body.classList.remove('dark-mode');
+        toggleBtn.innerHTML = '🌙 Dark Mode';
+      }
+    }
+
+    // Load history data from memory (can't use localStorage in artifacts)
+    function loadHistory() {
+      // In a real environment, this would load from localStorage
+      // For artifacts, we keep it in memory only
+      return historyData;
+    }
+
+    function addDay(dateStr = "") {
+      const tbody = document.querySelector("#timeSheet tbody");
+      const row = document.createElement("tr");
+      const today = dateStr || new Date().toISOString().split("T")[0];
+      
+      row.innerHTML = `
+        <td><input type="date" value="${today}"></td>
+        <td><input type="number" step="0.01" value="0" min="0" placeholder="0.00"></td>
+        <td><input type="number" step="0.01" value="0" min="0" placeholder="0.00"></td>
+        <td class="totalHours">0.00</td>
+        <td class="amount">$0.00</td>
+        <td><button class="delete-btn" onclick="deleteRow(this)">🗑️ Delete</button></td>
+      `;
+      
+      tbody.appendChild(row);
+      updateTotals();
+      
+      row.querySelectorAll("input").forEach(input => {
+        input.addEventListener("input", updateTotals);
+        input.addEventListener("focus", function() {
+          this.select();
+        });
+      });
+
+      // Add animation
+      row.style.opacity = '0';
+      row.style.transform = 'translateY(-20px)';
+      setTimeout(() => {
+        row.style.transition = 'all 0.3s ease';
+        row.style.opacity = '1';
+        row.style.transform = 'translateY(0)';
+      }, 100);
+
+      showToast('Day added successfully!');
+    }
+
+    function addWeek() {
+      let today = new Date();
+      for (let i = 0; i < 7; i++) {
+        let d = new Date(today);
+        d.setDate(today.getDate() + i);
+        setTimeout(() => {
+          addDay(d.toISOString().split("T")[0]);
+        }, i * 100);
+      }
+      showToast('Week added successfully!');
+    }
+
+    function deleteRow(btn) {
+      const row = btn.closest('tr');
+      row.style.transition = 'all 0.3s ease';
+      row.style.opacity = '0';
+      row.style.transform = 'translateX(-100px)';
+      setTimeout(() => {
+        row.remove();
+        updateTotals();
+      }, 300);
+      showToast('Row deleted successfully!');
+    }
+
+    function updateTotals() {
+      let rate = parseFloat(document.getElementById("hourlyRate").value) || 0;
+      let bonus = parseFloat(document.getElementById("bonus").value) || 0;
+      let includeBreaks = document.getElementById("includeBreaks").checked;
+      let totalWorkingHours = 0;
+      let totalBreakHours = 0;
+      let totalHours = 0;
+      let basePay = 0;
+
+      document.querySelectorAll("#timeSheet tbody tr").forEach(row => {
+        let work = parseFloat(row.cells[1].querySelector("input").value) || 0;
+        let brk = parseFloat(row.cells[2].querySelector("input").value) || 0;
+        let hours = work + brk;
+        
+        // Calculate amount based on the checkbox setting
+        let amount = includeBreaks ? (work + brk) * rate : work * rate;
+        
+        row.querySelector(".totalHours").innerText = hours.toFixed(2);
+        row.querySelector(".amount").innerText = `${amount.toFixed(2)}`;
+        
+        totalWorkingHours += work;
+        totalBreakHours += brk;
+        totalHours += hours;
+        basePay += amount;
+      });
+
+      document.getElementById("totalWorkingHours").innerText = totalWorkingHours.toFixed(2);
+      document.getElementById("totalBreakHours").innerText = totalBreakHours.toFixed(2);
+      document.getElementById("totalHours").innerText = totalHours.toFixed(2);
+      document.getElementById("basePay").innerText = `${basePay.toFixed(2)}`;
+      document.getElementById("totalValue").innerText = (basePay + bonus).toFixed(2);
+    }
+
+    function saveHistory() {
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      const date = new Date().toLocaleString();
+      const total = document.getElementById("totalValue").innerText;
+      const workingHours = document.getElementById("totalWorkingHours").innerText;
+      
+      const historyItem = {
+        id: Date.now(),
+        employee: employeeName,
+        date,
+        total: `$${total}`,
+        hours: workingHours
+      };
+      
+      historyData.push(historyItem);
+      displayHistory();
+      showToast('History saved successfully!');
+    }
+
+    function displayHistory() {
+      const historyContainer = document.getElementById("history");
+      historyContainer.innerHTML = '';
+      
+      if (historyData.length === 0) {
+        historyContainer.innerHTML = '<p style="text-align: center; color: #666;">No history items saved yet.</p>';
+        return;
+      }
+      
+      const displayData = [...historyData].reverse();
+      displayData.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "history-item";
+        div.innerHTML = `
+          <div>
+            <strong>${item.employee}</strong><br>
+            <small>${item.date}</small><br>
+            <span>Hours: ${item.hours}</span>
+          </div>
+          <div>
+            <strong style="font-size: 1.2em;">${item.total}</strong><br>
+            <button class="delete-btn" onclick="deleteHistory(${item.id})" style="font-size: 0.7em; padding: 4px 8px;">Delete</button>
+          </div>
+        `;
+        historyContainer.appendChild(div);
+      });
+    }
+
+    function deleteHistory(id) {
+      historyData = historyData.filter(item => item.id !== id);
+      displayHistory();
+      showToast('History item deleted!');
+    }
+
+    function clearAll() {
+      if (confirm('Are you sure you want to clear all entries? This cannot be undone.')) {
+        const tbody = document.querySelector("#timeSheet tbody");
+        const rows = tbody.querySelectorAll('tr');
+        
+        // Animate out all rows
+        rows.forEach((row, index) => {
+          setTimeout(() => {
+            row.style.transition = 'all 0.3s ease';
+            row.style.opacity = '0';
+            row.style.transform = 'translateX(-100px)';
+            setTimeout(() => {
+              if (row.parentNode) {
+                row.remove();
+              }
+              if (index === rows.length - 1) {
+                updateTotals();
+              }
+            }, 300);
+          }, index * 100);
+        });
+        
+        showToast('All entries cleared!');
+      }
+    }
+
+    function downloadPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      
+      // Header
+      doc.setFontSize(20);
+      doc.text("Enzo Dialer Time Sheet", 20, 20);
+      doc.setFontSize(14);
+      doc.text(`Employee: ${employeeName}`, 20, 35);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 20, 45);
+      
+      let y = 65;
+      doc.setFontSize(12);
+      doc.text("Date", 20, y);
+      doc.text("Work Hrs", 60, y);
+      doc.text("Break Hrs", 100, y);
+      doc.text("Total Hrs", 140, y);
+      doc.text("Amount", 180, y);
+      y += 10;
+      
+      document.querySelectorAll("#timeSheet tbody tr").forEach(row => {
+        let date = row.cells[0].querySelector("input").value || 'N/A';
+        let work = row.cells[1].querySelector("input").value || '0';
+        let brk = row.cells[2].querySelector("input").value || '0';
+        let total = row.querySelector(".totalHours").innerText;
+        let amount = row.querySelector(".amount").innerText;
+        
+        doc.text(date, 20, y);
+        doc.text(work, 60, y);
+        doc.text(brk, 100, y);
+        doc.text(total, 140, y);
+        doc.text(amount, 180, y);
+        y += 10;
+      });
+      
+      y += 10;
+      doc.setFontSize(16);
+      doc.text(`Grand Total: $${document.getElementById("totalValue").innerText}`, 20, y);
+      
+      doc.save(`${employeeName}_timesheet_${new Date().toISOString().split('T')[0]}.pdf`);
+      showToast('PDF downloaded successfully!');
+    }
+
+    function downloadCSV() {
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      let csvContent = "data:text/csv;charset=utf-8,";
+      
+      // Headers
+      csvContent += "Employee,Date,Working Hours,Break Hours,Total Hours,Amount\n";
+      
+      // Data rows
+      document.querySelectorAll("#timeSheet tbody tr").forEach(row => {
+        let date = row.cells[0].querySelector("input").value || '';
+        let work = row.cells[1].querySelector("input").value || '0';
+        let brk = row.cells[2].querySelector("input").value || '0';
+        let total = row.querySelector(".totalHours").innerText;
+        let amt = row.querySelector(".amount").innerText.replace('$', '');
+        
+        csvContent += `"${employeeName}","${date}","${work}","${brk}","${total}","${amt}"\n`;
+      });
+      
+      // Summary row
+      csvContent += `"","","","","Grand Total:","${document.getElementById("totalValue").innerText}"\n`;
+      
+      // Create and download
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `${employeeName}_timesheet_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast('CSV downloaded successfully!');
+    }
+
+    function downloadXLSX() {
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      let wb = XLSX.utils.book_new();
+      let ws_data = [["Employee", "Date", "Working Hours", "Break Hours", "Total Hours", "Amount"]];
+      
+      document.querySelectorAll("#timeSheet tbody tr").forEach(row => {
+        let date = row.cells[0].querySelector("input").value || '';
+        let work = row.cells[1].querySelector("input").value || '0';
+        let brk = row.cells[2].querySelector("input").value || '0';
+        let total = row.querySelector(".totalHours").innerText;
+        let amt = row.querySelector(".amount").innerText.replace('$', '');
+        ws_data.push([employeeName, date, work, brk, total, amt]);
+      });
+      
+      ws_data.push(['', '', '', '', 'Grand Total:', document.getElementById("totalValue").innerText]);
+      
+      let ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, "Timesheet");
+      XLSX.writeFile(wb, `${employeeName}_timesheet_${new Date().toISOString().split('T')[0]}.xlsx`);
+      showToast('XLSX downloaded successfully!');
+    }
+
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => toast.classList.add('show'), 100);
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 300);
+      }, 3000);
+    }
+
+    // Event listeners
+    document.getElementById("hourlyRate").addEventListener("input", updateTotals);
+    document.getElementById("bonus").addEventListener("input", updateTotals);
+
+    // Load history on page load
+    document.addEventListener('DOMContentLoaded', function() {
+      displayHistory();
+      addDay(); // Add one default day
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', function(e) {
+      if (e.ctrlKey) {
+        switch(e.key) {
+          case 'd':
+            e.preventDefault();
+            addDay();
+            break;
+          case 's':
+            e.preventDefault();
+            saveHistory();
+            break;
+        }
+      }
+    });
+  </script>
+</body>
+</html>
