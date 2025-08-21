@@ -1,0 +1,1955 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enzo Dialer Time Sheet</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --primary-color: #1e3a8a;
+      --primary-gradient: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+      --primary-dark: #3b82f6;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+      min-height: 100vh;
+      padding: 24px;
+      transition: all 0.4s ease;
+    }
+
+    .container {
+      max-width: 1280px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      overflow: hidden;
+      transition: all 0.4s ease;
+    }
+
+    .header {
+      background: var(--primary-gradient);
+      padding: 24px;
+      color: #ffffff;
+      border-bottom: 2px solid rgba(255,255,255,0.15);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .header-logo {
+      width: 48px;
+      height: 48px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5em;
+      font-weight: 700;
+      color: #ffffff;
+      flex-shrink: 0;
+    }
+
+    .header-title {
+      flex-grow: 1;
+      text-align: center;
+    }
+
+    .header-title h1 {
+      font-size: 2em;
+      font-weight: 700;
+      margin-bottom: 6px;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+
+    .header-title p {
+      font-size: 1em;
+      font-weight: 400;
+      opacity: 0.85;
+    }
+
+    .header-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .theme-toggle, .login-btn, .color-customize-btn {
+      background: rgba(255,255,255,0.2);
+      border: 2px solid rgba(255,255,255,0.3);
+      color: #ffffff;
+      padding: 10px 20px;
+      border-radius: 50px;
+      cursor: pointer;
+      font-size: 0.9em;
+      font-weight: 500;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(10px);
+      white-space: nowrap;
+    }
+
+    .theme-toggle:hover, .login-btn:hover, .color-customize-btn:hover {
+      background: rgba(255,255,255,0.3);
+      transform: scale(1.05);
+    }
+
+    .settings-bar {
+      background: #f8fafc;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 24px;
+      border-bottom: 2px solid #e2e8f0;
+      transition: all 0.4s ease;
+    }
+
+    .input-group {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding: 0 12px;
+      position: relative;
+    }
+
+    .input-group:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      right: 0;
+      top: 10%;
+      height: 80%;
+      width: 1px;
+      background: #d1d5db;
+      opacity: 0.5;
+    }
+
+    .input-group label {
+      font-weight: 600;
+      color: #1f2937;
+      font-size: 0.95em;
+      letter-spacing: 0.02em;
+      transition: all 0.3s ease;
+    }
+
+    .input-group input {
+      padding: 12px 16px;
+      border: 2px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 1em;
+      background: #ffffff;
+      transition: all 0.3s ease;
+    }
+
+    .input-group input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.1);
+    }
+
+    .main-content {
+      padding: 24px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      margin-bottom: 32px;
+      border-radius: 12px;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+    }
+
+    table {
+      width: 100%;
+      min-width: 750px;
+      border-collapse: collapse;
+      background: #ffffff;
+      transition: all 0.4s ease;
+    }
+
+    th {
+      background: var(--primary-gradient);
+      color: #ffffff;
+      padding: 14px 16px;
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.9em;
+      letter-spacing: 0.06em;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid #e2e8f0;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
+
+    tbody tr {
+      transition: all 0.3s ease;
+    }
+
+    tbody tr:hover {
+      background-color: #f1f5f9;
+      transform: translateY(-1px);
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #f9fafb;
+    }
+
+    tbody tr:nth-child(even):hover {
+      background-color: #e5e7eb;
+    }
+
+    td input {
+      width: 100px;
+      padding: 10px;
+      border: 2px solid #d1d5db;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 0.95em;
+      transition: all 0.3s ease;
+    }
+
+    td input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(30, 58, 138, 0.1);
+    }
+
+    td input[type="date"] {
+      width: 150px;
+    }
+
+    td input[type="checkbox"] {
+      width: auto;
+      transform: scale(1.4);
+      accent-color: var(--primary-color);
+    }
+
+    .delete-btn {
+      background: #dc2626;
+      color: #ffffff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9em;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .delete-btn:hover {
+      background: #b91c1c;
+      transform: scale(1.05);
+    }
+
+    .summary-section {
+      background: var(--primary-gradient);
+      padding: 24px;
+      border-radius: 12px;
+      color: #ffffff;
+      margin-bottom: 32px;
+      transition: all 0.4s ease;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .summary-item {
+      background: rgba(255,255,255,0.2);
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      backdrop-filter: blur(12px);
+      transition: all 0.3s ease;
+    }
+
+    .summary-item:hover {
+      transform: translateY(-2px);
+      background: rgba(255,255,255,0.25);
+    }
+
+    .summary-item h3 {
+      font-size: 0.9em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+      font-weight: 500;
+      opacity: 0.9;
+    }
+
+    .summary-item .value {
+      font-size: 1.8em;
+      font-weight: 600;
+    }
+
+    .grand-total {
+      text-align: center;
+      padding: 24px;
+      background: rgba(255,255,255,0.25);
+      border-radius: 10px;
+      backdrop-filter: blur(12px);
+    }
+
+    .grand-total h2 {
+      font-size: 2.2em;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 16px;
+      justify-content: center;
+      margin-bottom: 32px;
+    }
+
+    .btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 50px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.12);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: rgba(255,255,255,0.2);
+      transition: all 0.4s ease;
+    }
+
+    .btn:hover::after {
+      left: 0;
+    }
+
+    .btn-primary {
+      background: var(--primary-gradient);
+      color: #ffffff;
+    }
+
+    .btn-success {
+      background: linear-gradient(135deg, #15803d 0%, #22c55e 100%);
+      color: #ffffff;
+    }
+
+    .btn-warning {
+      background: linear-gradient(135deg, #c2410c 0%, #f97316 100%);
+      color: #ffffff;
+    }
+
+    .btn-info {
+      background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%);
+      color: #ffffff;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 18px rgba(0,0,0,0.18);
+      filter: brightness(1.05);
+    }
+
+    .history-section {
+      background: #f8fafc;
+      padding: 24px;
+      border-radius: 12px;
+      margin-top: 32px;
+      transition: all 0.4s ease;
+    }
+
+    .history-section h2 {
+      color: #1f2937;
+      margin-bottom: 24px;
+      text-align: center;
+      font-size: 1.4em;
+      font-weight: 600;
+    }
+
+    .history-list {
+      max-height: 320px;
+      overflow-y: auto;
+      padding-right: 12px;
+    }
+
+    .history-item {
+      background: #ffffff;
+      padding: 20px;
+      margin-bottom: 16px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .history-item:hover {
+      transform: translateX(4px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+    }
+
+    .toast {
+      position: fixed;
+      top: 24px;
+      right: 24px;
+      background: #15803d;
+      color: #ffffff;
+      padding: 16px 24px;
+      border-radius: 10px;
+      box-shadow: 0 6px 18px rgba(0,0,0,0.2);
+      transform: translateX(100%);
+      transition: all 0.4s ease;
+      z-index: 1000;
+      font-size: 1em;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toast::before {
+      content: '✔';
+      font-size: 1.2em;
+    }
+
+    .toast.show {
+      transform: translateX(0);
+    }
+
+    .footer {
+      background: var(--primary-color);
+      color: #ffffff;
+      padding: 16px;
+      text-align: center;
+      font-size: 0.9em;
+      border-top: 2px solid rgba(255,255,255,0.15);
+    }
+
+    .footer p {
+      margin: 4px 0;
+      opacity: 0.9;
+    }
+
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1002;
+    }
+
+    .loader {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid var(--primary-color);
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .confirm-dialog, .color-picker-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1001;
+      padding: 24px;
+    }
+
+    .confirm-box, .color-picker-box {
+      background: #ffffff;
+      padding: 24px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+      animation: slideIn 0.3s ease;
+    }
+
+    .confirm-box h3, .color-picker-box h3 {
+      font-size: 1.4em;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #1f2937;
+    }
+
+    .confirm-box p, .color-picker-box p {
+      font-size: 1em;
+      color: #4b5563;
+      margin-bottom: 24px;
+    }
+
+    .confirm-box button, .color-picker-box button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 50px;
+      font-size: 0.95em;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 0 8px;
+      transition: all 0.3s ease;
+    }
+
+    .confirm-box .confirm-btn, .color-picker-box .apply-btn {
+      background: var(--primary-color);
+      color: #ffffff;
+    }
+
+    .confirm-box .cancel-btn, .color-picker-box .cancel-btn {
+      background: #e5e7eb;
+      color: #1f2937;
+    }
+
+    .confirm-box button:hover, .color-picker-box button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+
+    .color-picker-box input[type="color"] {
+      width: 100px;
+      height: 50px;
+      border: none;
+      cursor: pointer;
+      margin: 16px auto;
+      display: block;
+    }
+
+    /* Dark Mode Styles */
+    body.dark-mode {
+      background: linear-gradient(135deg, #0f172a 0%, #334155 100%);
+    }
+
+    body.dark-mode .container {
+      background: #1e293b;
+      color: #f1f5f9;
+    }
+
+    body.dark-mode .settings-bar {
+      background: #1f2937;
+      border-bottom: 2px solid #374151;
+    }
+
+    body.dark-mode .input-group label {
+      color: #d1d5db;
+    }
+
+    body.dark-mode .input-group input {
+      background: #374151;
+      border: 2px solid #4b5563;
+      color: #f1f5f9;
+    }
+
+    body.dark-mode .input-group input:focus {
+      border-color: var(--primary-dark);
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+    }
+
+    body.dark-mode .input-group::after {
+      background: #4b5563;
+    }
+
+    body.dark-mode table {
+      background: #1e293b;
+    }
+
+    body.dark-mode td {
+      border-bottom: 1px solid #374151;
+      color: #f1f5f9;
+    }
+
+    body.dark-mode tbody tr:hover {
+      background-color: #374151;
+    }
+
+    body.dark-mode tbody tr:nth-child(even) {
+      background-color: #1f2937;
+    }
+
+    body.dark-mode tbody tr:nth-child(even):hover {
+      background-color: #374151;
+    }
+
+    body.dark-mode td input {
+      background: #374151;
+      border: 2px solid #4b5563;
+      color: #f1f5f9;
+    }
+
+    body.dark-mode td input:focus {
+      border-color: var(--primary-dark);
+      box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+    }
+
+    body.dark-mode .history-section {
+      background: #1f2937;
+    }
+
+    body.dark-mode .history-section h2 {
+      color: #d1d5db;
+    }
+
+    body.dark-mode .history-item {
+      background: #374151;
+      color: #f1f5f9;
+    }
+
+    body.dark-mode .toast {
+      background: #16a34a;
+    }
+
+    body.dark-mode .footer {
+      background: var(--primary-color);
+    }
+
+    body.dark-mode .confirm-box, body.dark-mode .color-picker-box {
+      background: #1e293b;
+      color: #f1f5f9;
+    }
+
+    body.dark-mode .confirm-box h3, body.dark-mode .color-picker-box h3 {
+      color: #f1f5f9;
+    }
+
+    body.dark-mode .confirm-box p, body.dark-mode .color-picker-box p {
+      color: #9ca3af;
+    }
+
+    body.dark-mode .confirm-box .cancel-btn, body.dark-mode .color-picker-box .cancel-btn {
+      background: #4b5563;
+      color: #f1f5f9;
+    }
+
+    #loginModal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1001;
+      padding: 24px;
+      transition: all 0.3s ease;
+    }
+
+    #loginForm {
+      background: #ffffff;
+      padding: 32px;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      animation: slideIn 0.3s ease;
+    }
+
+    body.dark-mode #loginForm {
+      background: #1e293b;
+      color: #f1f5f9;
+    }
+
+    #loginForm h2 {
+      font-size: 1.8em;
+      font-weight: 600;
+      margin-bottom: 24px;
+      color: #1f2937;
+    }
+
+    body.dark-mode #loginForm h2 {
+      color: #f1f5f9;
+    }
+
+    #loginForm input {
+      display: block;
+      width: 100%;
+      margin: 16px 0;
+      padding: 14px;
+      border: 2px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 1em;
+      transition: all 0.3s ease;
+    }
+
+    body.dark-mode #loginForm input {
+      background: #374151;
+      border: 2px solid #4b5563;
+      color: #f1f5f9;
+    }
+
+    #loginForm input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 4px rgba(30, 58, 138, 0.1);
+    }
+
+    body.dark-mode #loginForm input:focus {
+      border-color: var(--primary-dark);
+      box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+    }
+
+    #loginForm button {
+      margin: 12px 8px;
+      padding: 14px 28px;
+      border: none;
+      border-radius: 50px;
+      cursor: pointer;
+      font-size: 1em;
+      font-weight: 600;
+      width: 48%;
+      display: inline-block;
+      transition: all 0.3s ease;
+    }
+
+    #loginForm button:nth-child(1) {
+      background: var(--primary-color);
+      color: #ffffff;
+    }
+
+    #loginForm button:nth-child(2) {
+      background: #15803d;
+      color: #ffffff;
+    }
+
+    #loginForm button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      filter: brightness(1.05);
+    }
+
+    #info {
+      font-size: 0.9em;
+      color: #6b7280;
+      margin: 16px 0;
+    }
+
+    body.dark-mode #info {
+      color: #9ca3af;
+    }
+
+    #message {
+      color: #dc2626;
+      font-size: 0.9em;
+      margin-top: 12px;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 16px;
+      }
+
+      .container {
+        margin: 8px;
+        border-radius: 10px;
+      }
+
+      .header {
+        flex-direction: column;
+        align-items: center;
+        padding: 20px;
+        gap: 12px;
+      }
+
+      .header-logo {
+        margin-bottom: 8px;
+      }
+
+      .header-title h1 {
+        font-size: 1.8em;
+      }
+
+      .header-title p {
+        font-size: 0.95em;
+      }
+
+      .header-buttons {
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .theme-toggle, .login-btn, .color-customize-btn {
+        padding: 10px 16px;
+        font-size: 0.85em;
+      }
+
+      .settings-bar {
+        grid-template-columns: 1fr;
+        padding: 20px;
+        gap: 20px;
+      }
+
+      .input-group:not(:last-child)::after {
+        display: none;
+      }
+
+      .input-group input {
+        font-size: 1em;
+        padding: 14px;
+      }
+
+      .table-container {
+        margin-bottom: 24px;
+      }
+
+      td input {
+        width: 90px;
+        font-size: 0.95em;
+      }
+
+      td input[type="date"] {
+        width: 130px;
+      }
+
+      .delete-btn {
+        padding: 10px;
+        font-size: 0.95em;
+      }
+
+      .summary-section {
+        padding: 20px;
+      }
+
+      .summary-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+
+      .summary-item {
+        padding: 16px;
+      }
+
+      .summary-item h3 {
+        font-size: 0.85em;
+      }
+
+      .summary-item .value {
+        font-size: 1.6em;
+      }
+
+      .grand-total h2 {
+        font-size: 1.8em;
+      }
+
+      .controls {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+
+      .btn {
+        padding: 14px;
+        font-size: 0.95em;
+      }
+
+      .history-section {
+        padding: 20px;
+      }
+
+      .history-section h2 {
+        font-size: 1.3em;
+      }
+
+      .history-item {
+        padding: 16px;
+        font-size: 0.95em;
+      }
+
+      .toast {
+        top: 16px;
+        right: 16px;
+        padding: 14px 20px;
+        font-size: 0.95em;
+      }
+
+      .footer {
+        padding: 12px;
+        font-size: 0.85em;
+      }
+
+      #loginForm, .color-picker-box {
+        padding: 24px;
+        max-width: 95%;
+      }
+
+      #loginForm h2, .color-picker-box h3 {
+        font-size: 1.6em;
+      }
+
+      #loginForm input, .color-picker-box input[type="color"] {
+        padding: 12px;
+        font-size: 1em;
+      }
+
+      #loginForm button, .color-picker-box button {
+        padding: 12px;
+        font-size: 1em;
+        width: 48%;
+      }
+
+      #info {
+        font-size: 0.85em;
+      }
+
+      #message {
+        font-size: 0.85em;
+      }
+
+      .confirm-box {
+        padding: 20px;
+        max-width: 95%;
+      }
+
+      .confirm-box h3 {
+        font-size: 1.3em;
+      }
+
+      .confirm-box p {
+        font-size: 0.95em;
+      }
+
+      .confirm-box button {
+        padding: 12px 20px;
+        font-size: 0.95em;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="loginModal" style="display: none;">
+    <div id="loginForm">
+      <h2>Login / Register</h2>
+      <input id="username" placeholder="Username">
+      <input id="password" type="password" placeholder="Password">
+      <p id="info">Accounts inactive for 6 months will be deleted.</p>
+      <button onclick="register()">Register</button>
+      <button onclick="login()">Login</button>
+      <p id="message"></p>
+    </div>
+  </div>
+
+  <div id="colorPickerModal" class="color-picker-modal">
+    <div class="color-picker-box">
+      <h3>Customize Theme Color</h3>
+      <p>Choose a primary color for the application</p>
+      <input type="color" id="colorPicker" value="#1e3a8a">
+      <button class="apply-btn" onclick="applyCustomColor()">Apply</button>
+      <button class="cancel-btn" onclick="closeColorPicker()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="confirmDialog" class="confirm-dialog">
+    <div class="confirm-box">
+      <h3 id="confirmTitle">Confirm Action</h3>
+      <p id="confirmMessage"></p>
+      <button class="confirm-btn" onclick="confirmAction()">Confirm</button>
+      <button class="cancel-btn" onclick="cancelAction()">Cancel</button>
+    </div>
+  </div>
+
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loader"></div>
+  </div>
+
+  <div class="container" id="appContainer" style="display: block;">
+    <div class="header">
+      <div class="header-logo">ED</div>
+      <div class="header-title">
+        <h1>Enzo Dialer Time Sheet</h1>
+        <p>Professional Time Tracking Solution</p>
+      </div>
+      <div class="header-buttons">
+        <button class="login-btn" id="loginBtn" onclick="showLoginModal()">🔑 Login/Register</button>
+        <button class="color-customize-btn" onclick="showColorPicker()">🎨 Customize Color</button>
+        <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark Mode</button>
+      </div>
+    </div>
+
+    <div class="settings-bar">
+      <div class="input-group">
+        <label>Employee Name</label>
+        <input type="text" id="employeeName" value="Enzo" placeholder="Enter name">
+      </div>
+      <div class="input-group">
+        <label>Employee Role</label>
+        <input type="text" id="employeeRole" value="Employee" placeholder="Enter role">
+      </div>
+      <div class="input-group">
+        <label>Hourly Rate (USD)</label>
+        <input type="number" id="hourlyRate" value="0" step="0.01" min="0">
+      </div>
+      <div class="input-group">
+        <label>Bonus (USD)</label>
+        <input type="number" id="bonus" value="0" step="0.01" min="0">
+      </div>
+      <div class="input-group">
+        <label>Payment Options</label>
+        <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
+          <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; cursor: pointer;">
+            <input type="checkbox" id="includeBreaks" onchange="updateTotals()" style="width: auto;">
+            Include breaks in payment
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="table-container">
+        <table id="timeSheet">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Day Off</th>
+              <th>Work Hours</th>
+              <th>Break Hours</th>
+              <th>Total Hours</th>
+              <th>Amount</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="summary-section">
+        <div class="summary-grid">
+          <div class="summary-item">
+            <h3>Total Working Hours</h3>
+            <div class="value" id="totalWorkingHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Total Break Hours</h3>
+            <div class="value" id="totalBreakHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Total Hours</h3>
+            <div class="value" id="totalHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Base Pay</h3>
+            <div class="value" id="basePay">$0.00</div>
+          </div>
+        </div>
+        <div class="grand-total">
+          <h2>Grand Total: $<span id="totalValue">0.00</span></h2>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-primary" onclick="addDay()">📅 Add Day</button>
+        <button class="btn btn-primary" onclick="addWeek()">📆 Add Week</button>
+        <button class="btn btn-success" onclick="saveHistory()">💾 Save History</button>
+        <button class="btn btn-warning" onclick="downloadPDF()">📄 Export PDF</button>
+        <button class="btn btn-info" onclick="downloadCSV()">📊 Export CSV</button>
+        <button class="btn btn-info" onclick="downloadXLSX()">📈 Export XLSX</button>
+        <button class="btn btn-info" onclick="emailData()">📧 Email Report</button>
+        <button class="btn btn-warning" onclick="showConfirmDialog('clearAll', 'Are you sure you want to clear all entries? This cannot be undone.')">🗑️ Clear All</button>
+        <button class="btn btn-warning" id="logoutBtn" onclick="logout()" style="display: none;">🚪 Logout</button>
+      </div>
+
+      <div class="history-section">
+        <h2>📋 Payment History</h2>
+        <div id="history" class="history-list"></div>
+      </div>
+    </div>
+
+    <div class="footer">
+      <p>Enzo Dialer Time Sheet &copy; 2025</p>
+      <p>Last Updated: <span id="lastUpdated">Not yet saved</span></p>
+      <p>Contact: support@enzodialer.com | Company: Enzo Dialer</p>
+    </div>
+  </div>
+
+  <script>
+    var gk_isXlsx = false;
+    var gk_xlsxFileLookup = {};
+    var gk_fileData = {};
+    function filledCell(cell) {
+      return cell !== '' && cell != null;
+    }
+    function loadFileData(filename) {
+      if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+        try {
+          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+          var firstSheetName = workbook.SheetNames[0];
+          var worksheet = workbook.Sheets[firstSheetName];
+          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+          var filteredData = jsonData.filter(row => row.some(filledCell));
+          var headerRowIndex = filteredData.findIndex((row, index) =>
+            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+          );
+          if (headerRowIndex === -1 || headerRowIndex > 25) {
+            headerRowIndex = 0;
+          }
+          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex));
+          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+          return csv;
+        } catch (e) {
+          console.error(e);
+          return "";
+        }
+      }
+      return gk_fileData[filename] || "";
+    }
+
+    const STORAGE_KEY = 'enzo_timesheet_users';
+    const THEME_KEY = 'enzo_timesheet_theme';
+    const COLOR_KEY = 'enzo_timesheet_color';
+    let users = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+    let currentUser = null;
+    let historyData = [];
+    let isDarkMode = localStorage.getItem(THEME_KEY) === 'dark';
+    let lastAction = null;
+
+    function showLoginModal() {
+      document.getElementById('loginModal').style.display = 'flex';
+    }
+
+    function showColorPicker() {
+      document.getElementById('colorPickerModal').style.display = 'flex';
+      document.getElementById('colorPicker').value = getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim();
+    }
+
+    function closeColorPicker() {
+      document.getElementById('colorPickerModal').style.display = 'none';
+    }
+
+    function applyCustomColor() {
+      showLoading();
+      const color = document.getElementById('colorPicker').value;
+      document.documentElement.style.setProperty('--primary-color', color);
+      document.documentElement.style.setProperty('--primary-gradient', `linear-gradient(135deg, ${color} 0%, ${lightenColor(color, 20)} 100%)`);
+      document.documentElement.style.setProperty('--primary-dark', lightenColor(color, 20));
+      localStorage.setItem(COLOR_KEY, JSON.stringify({ primary: color }));
+      closeColorPicker();
+      hideLoading();
+      showToast('Theme color updated!');
+    }
+
+    function lightenColor(hex, percent) {
+      hex = hex.replace(/^#/, '');
+      let r = parseInt(hex.substr(0, 2), 16);
+      let g = parseInt(hex.substr(2, 2), 16);
+      let b = parseInt(hex.substr(4, 2), 16);
+      r = Math.min(255, Math.round(r + (255 - r) * (percent / 100)));
+      g = Math.min(255, Math.round(g + (255 - g) * (percent / 100)));
+      b = Math.min(255, Math.round(b + (255 - b) * (percent / 100)));
+      return `#${(r.toString(16).padStart(2, '0'))}${(g.toString(16).padStart(2, '0'))}${(b.toString(16).padStart(2, '0'))}`;
+    }
+
+    cleanupUsers();
+
+    function cleanupUsers() {
+      const now = Date.now();
+      const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
+      Object.keys(users).forEach(username => {
+        if (now - users[username].lastLogin > sixMonthsMs) {
+          delete users[username];
+        }
+      });
+      saveUsers();
+    }
+
+    function saveUsers() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
+      updateLastModified();
+    }
+
+    function register() {
+      showLoading();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      if (!username || password.length < 6) {
+        setMessage('Username required, password must be at least 6 characters.');
+        hideLoading();
+        return;
+      }
+      if (users[username]) {
+        setMessage('Username already taken.');
+        hideLoading();
+        return;
+      }
+      users[username] = {
+        password: password,
+        lastLogin: Date.now(),
+        data: {
+          settings: { employeeName: username, employeeRole: 'Employee', hourlyRate: 0, bonus: 0, includeBreaks: false },
+          rows: [],
+          history: []
+        }
+      };
+      saveUsers();
+      login();
+      hideLoading();
+    }
+
+    function login() {
+      showLoading();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      if (!users[username] || users[username].password !== password) {
+        setMessage('Invalid username or password.');
+        hideLoading();
+        return;
+      }
+      currentUser = username;
+      users[username].lastLogin = Date.now();
+      saveUsers();
+      localStorage.setItem('currentUser', username);
+      loadUserData();
+      document.getElementById('loginModal').style.display = 'none';
+      document.getElementById('loginBtn').style.display = 'none';
+      document.getElementById('logoutBtn').style.display = 'block';
+      setMessage('');
+      hideLoading();
+    }
+
+    function setMessage(msg) {
+      document.getElementById('message').innerText = msg;
+    }
+
+    function loadUserData() {
+      if (!currentUser) return;
+      const data = users[currentUser].data;
+      document.getElementById('employeeName').value = data.settings.employeeName;
+      document.getElementById('employeeRole').value = data.settings.employeeRole || 'Employee';
+      document.getElementById('hourlyRate').value = data.settings.hourlyRate;
+      document.getElementById('bonus').value = data.settings.bonus;
+      document.getElementById('includeBreaks').checked = data.settings.includeBreaks;
+      historyData = data.history || [];
+      displayHistory();
+      const tbody = document.querySelector('#timeSheet tbody');
+      tbody.innerHTML = '';
+      data.rows.forEach(rowData => {
+        addDay(rowData.date, rowData.workHours, rowData.breakHours, rowData.dayOff);
+      });
+      updateTotals();
+    }
+
+    function saveUserData() {
+      if (!currentUser) return;
+      const data = users[currentUser].data;
+      data.settings = {
+        employeeName: document.getElementById('employeeName').value,
+        employeeRole: document.getElementById('employeeRole').value,
+        hourlyRate: parseFloat(document.getElementById('hourlyRate').value) || 0,
+        bonus: parseFloat(document.getElementById('bonus').value) || 0,
+        includeBreaks: document.getElementById('includeBreaks').checked
+      };
+      data.rows = [];
+      document.querySelectorAll('#timeSheet tbody tr').forEach(row => {
+        data.rows.push({
+          date: row.cells[0].querySelector('input').value,
+          dayOff: row.cells[1].querySelector('input').checked,
+          workHours: parseFloat(row.cells[2].querySelector('input').value) || 0,
+          breakHours: parseFloat(row.cells[3].querySelector('input').value) || 0
+        });
+      });
+      data.history = historyData;
+      saveUsers();
+    }
+
+    function logout() {
+      showLoading();
+      if (currentUser) saveUserData();
+      localStorage.removeItem('currentUser');
+      currentUser = null;
+      document.getElementById('loginModal').style.display = 'none';
+      document.getElementById('loginBtn').style.display = 'block';
+      document.getElementById('logoutBtn').style.display = 'none';
+      const tbody = document.querySelector('#timeSheet tbody');
+      tbody.innerHTML = '';
+      historyData = [];
+      displayHistory();
+      document.getElementById('employeeName').value = 'Guest';
+      document.getElementById('employeeRole').value = 'Employee';
+      document.getElementById('hourlyRate').value = 0;
+      document.getElementById('bonus').value = 0;
+      document.getElementById('includeBreaks').checked = false;
+      updateTotals();
+      hideLoading();
+      showToast('Logged out successfully!');
+    }
+
+    function toggleTheme() {
+      isDarkMode = !isDarkMode;
+      const body = document.body;
+      const toggleBtn = document.querySelector('.theme-toggle');
+      if (isDarkMode) {
+        body.classList.add('dark-mode');
+        toggleBtn.innerHTML = '☀️ Light Mode';
+        localStorage.setItem(THEME_KEY, 'dark');
+      } else {
+        body.classList.remove('dark-mode');
+        toggleBtn.innerHTML = '🌙 Dark Mode';
+        localStorage.setItem(THEME_KEY, 'light');
+      }
+    }
+
+    function applyTheme() {
+      const body = document.body;
+      const toggleBtn = document.querySelector('.theme-toggle');
+      if (isDarkMode) {
+        body.classList.add('dark-mode');
+        toggleBtn.innerHTML = '☀️ Light Mode';
+      } else {
+        body.classList.remove('dark-mode');
+        toggleBtn.innerHTML = '🌙 Dark Mode';
+      }
+    }
+
+    function applyCustomTheme() {
+      const savedColor = localStorage.getItem(COLOR_KEY);
+      if (savedColor) {
+        const { primary } = JSON.parse(savedColor);
+        document.documentElement.style.setProperty('--primary-color', primary);
+        document.documentElement.style.setProperty('--primary-gradient', `linear-gradient(135deg, ${primary} 0%, ${lightenColor(primary, 20)} 100%)`);
+        document.documentElement.style.setProperty('--primary-dark', lightenColor(primary, 20));
+      }
+    }
+
+    function updateLastModified() {
+      document.getElementById('lastUpdated').innerText = new Date().toLocaleString();
+    }
+
+    function showLoading() {
+      document.getElementById('loadingOverlay').style.display = 'flex';
+    }
+
+    function hideLoading() {
+      document.getElementById('loadingOverlay').style.display = 'none';
+    }
+
+    function showConfirmDialog(action, message) {
+      lastAction = action;
+      document.getElementById('confirmMessage').innerText = message;
+      document.getElementById('confirmDialog').style.display = 'flex';
+    }
+
+    function confirmAction() {
+      document.getElementById('confirmDialog').style.display = 'none';
+      if (lastAction === 'clearAll') {
+        clearAll();
+      } else if (lastAction.startsWith('deleteHistory')) {
+        const id = parseInt(lastAction.split('-')[1]);
+        deleteHistory(id);
+      }
+      lastAction = null;
+    }
+
+    function cancelAction() {
+      document.getElementById('confirmDialog').style.display = 'none';
+      lastAction = null;
+    }
+
+    function getYearWeek(dateStr) {
+      const date = new Date(dateStr);
+      const year = date.getFullYear();
+      let d = new Date(Date.UTC(year, date.getMonth(), date.getDate()));
+      d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+      const yearStart = new Date(Date.UTC(year, 0, 1));
+      const weekNo = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+      return { year, week: weekNo };
+    }
+
+    function getWeekStr(rows) {
+      if (rows.length === 0) {
+        const today = new Date().toISOString().split('T')[0];
+        const yw = getYearWeek(today);
+        return `Week ${yw.week} ${yw.year}`;
+      }
+
+      let yearWeeks = [];
+      rows.forEach(row => {
+        let dateStr = row.cells[0].querySelector('input').value;
+        if (dateStr) {
+          yearWeeks.push(getYearWeek(dateStr));
+        }
+      });
+
+      if (yearWeeks.length === 0) {
+        return 'No Dates';
+      }
+
+      yearWeeks.sort((a, b) => a.year - b.year || a.week - b.week);
+      const unique = [...new Set(yearWeeks.map(yw => `${yw.year}-${yw.week}`))].map(s => s.split('-').map(Number)).map(([y, w]) => ({year: y, week: w}));
+
+      const allYears = new Set(unique.map(u => u.year));
+      if (allYears.size > 1) {
+        return 'Weeks across multiple years';
+      } else {
+        const year = Array.from(allYears)[0];
+        const uniqueWeeks = [...new Set(unique.map(u => u.week))].sort((a, b) => a - b);
+        if (uniqueWeeks.length === 1) {
+          return `Week ${uniqueWeeks[0]} ${year}`;
+        } else if (uniqueWeeks.length === 2) {
+          return `Week ${uniqueWeeks[0]} and ${uniqueWeeks[1]} ${year}`;
+        } else {
+          return `Weeks ${uniqueWeeks.join(', ')} ${year}`;
+        }
+      }
+    }
+
+    function addDay(dateStr = "", workHours = 0, breakHours = 0, isDayOff = false) {
+      showLoading();
+      const tbody = document.querySelector("#timeSheet tbody");
+      const row = document.createElement("tr");
+      const today = dateStr || new Date().toISOString().split("T")[0];
+      
+      row.innerHTML = `
+        <td><input type="date" value="${today}"></td>
+        <td><input type="checkbox" class="day-off" ${isDayOff ? 'checked' : ''}></td>
+        <td><input type="number" step="0.01" value="${workHours.toFixed(2)}" min="0" placeholder="0.00" ${isDayOff ? 'disabled' : ''}></td>
+        <td><input type="number" step="0.01" value="${breakHours.toFixed(2)}" min="0" placeholder="0.00" ${isDayOff ? 'disabled' : ''}></td>
+        <td class="totalHours">0.00</td>
+        <td class="amount">$0.00</td>
+        <td><button class="delete-btn" onclick="deleteRow(this)">🗑️</button></td>
+      `;
+      
+      tbody.appendChild(row);
+      updateTotals();
+      
+      row.querySelectorAll("input").forEach(input => {
+        if (input.type === "checkbox") {
+          input.addEventListener("change", function() {
+            const workInput = row.cells[2].querySelector("input");
+            const breakInput = row.cells[3].querySelector("input");
+            workInput.disabled = this.checked;
+            breakInput.disabled = this.checked;
+            if (this.checked) {
+              workInput.value = "0.00";
+              breakInput.value = "0.00";
+            }
+            updateTotals();
+          });
+        } else {
+          input.addEventListener("input", updateTotals);
+          input.addEventListener("focus", function() {
+            this.select();
+          });
+        }
+      });
+
+      row.style.opacity = '0';
+      row.style.transform = 'translateY(-20px)';
+      setTimeout(() => {
+        row.style.transition = 'all 0.3s ease';
+        row.style.opacity = '1';
+        row.style.transform = 'translateY(0)';
+        hideLoading();
+        showToast('Day added successfully!');
+      }, 100);
+    }
+
+    function addWeek() {
+      showLoading();
+      let today = new Date();
+      for (let i = 0; i < 7; i++) {
+        let d = new Date(today);
+        d.setDate(today.getDate() + i);
+        setTimeout(() => {
+          addDay(d.toISOString().split("T")[0]);
+          if (i === 6) {
+            hideLoading();
+            showToast('Week added successfully!');
+          }
+        }, i * 100);
+      }
+    }
+
+    function deleteRow(btn) {
+      showLoading();
+      const row = btn.closest('tr');
+      row.style.transition = 'all 0.3s ease';
+      row.style.opacity = '0';
+      row.style.transform = 'translateX(-100px)';
+      setTimeout(() => {
+        row.remove();
+        updateTotals();
+        hideLoading();
+        showToast('Row deleted successfully!');
+      }, 300);
+    }
+
+    function updateTotals() {
+      let rate = parseFloat(document.getElementById("hourlyRate").value) || 0;
+      let bonus = parseFloat(document.getElementById("bonus").value) || 0;
+      let includeBreaks = document.getElementById("includeBreaks").checked;
+      let totalWorkingHours = 0;
+      let totalBreakHours = 0;
+      let totalHours = 0;
+      let basePay = 0;
+
+      document.querySelectorAll("#timeSheet tbody tr").forEach(row => {
+        let isDayOff = row.cells[1].querySelector("input").checked;
+        let work = isDayOff ? 0 : parseFloat(row.cells[2].querySelector("input").value) || 0;
+        let brk = isDayOff ? 0 : parseFloat(row.cells[3].querySelector("input").value) || 0;
+        let hours = work + brk;
+        let amount = includeBreaks ? (work + brk) * rate : work * rate;
+        
+        row.querySelector(".totalHours").innerText = hours.toFixed(2);
+        row.querySelector(".amount").innerText = `$${amount.toFixed(2)}`;
+        
+        totalWorkingHours += work;
+        totalBreakHours += brk;
+        totalHours += hours;
+        basePay += amount;
+      });
+
+      document.getElementById("totalWorkingHours").innerText = totalWorkingHours.toFixed(2);
+      document.getElementById("totalBreakHours").innerText = totalBreakHours.toFixed(2);
+      document.getElementById("totalHours").innerText = totalHours.toFixed(2);
+      document.getElementById("basePay").innerText = `$${basePay.toFixed(2)}`;
+      document.getElementById("totalValue").innerText = (basePay + bonus).toFixed(2);
+      if (currentUser) saveUserData();
+    }
+
+    function saveHistory() {
+      showLoading();
+      const rows = document.querySelectorAll("#timeSheet tbody tr");
+      const weekStr = getWeekStr(rows);
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      const totalPayment = document.getElementById("totalValue").innerText;
+      const workingHours = document.getElementById("totalWorkingHours").innerText;
+      const breakHours = document.getElementById("totalBreakHours").innerText;
+      const totalHours = document.getElementById("totalHours").innerText;
+      
+      const historyItem = {
+        id: Date.now(),
+        employee: employeeName,
+        weekStr: weekStr,
+        totalPayment: totalPayment,
+        workingHours: workingHours,
+        breakHours: breakHours,
+        totalHours: totalHours
+      };
+      
+      historyData.push(historyItem);
+      displayHistory();
+      if (currentUser) saveUserData();
+      hideLoading();
+      showToast('History saved successfully!');
+    }
+
+    function displayHistory() {
+      const historyContainer = document.getElementById("history");
+      historyContainer.innerHTML = '';
+      
+      if (historyData.length === 0) {
+        historyContainer.innerHTML = '<p style="text-align: center; color: #6b7280;">No history items saved yet.</p>';
+        return;
+      }
+      
+      const displayData = [...historyData].reverse();
+      displayData.forEach(item => {
+        const div = document.createElement("div");
+        div.className = "history-item";
+        div.innerHTML = `
+          <div>
+            <strong>${item.employee}</strong><br>
+            <small>${item.weekStr} Working: ${item.workingHours} h | Break: ${item.breakHours} h | Total: ${item.totalHours} h | Total Payment: ${item.totalPayment}</small>
+          </div>
+          <div>
+            <strong style="font-size: 1.2em;">$${item.totalPayment}</strong><br>
+            <button class="delete-btn" onclick="showConfirmDialog('deleteHistory-${item.id}', 'Are you sure you want to delete this history item?')" style="font-size: 0.85em; padding: 8px 14px;">Delete</button>
+          </div>
+        `;
+        historyContainer.appendChild(div);
+      });
+    }
+
+    function deleteHistory(id) {
+      showLoading();
+      historyData = historyData.filter(item => item.id !== id);
+      displayHistory();
+      if (currentUser) saveUserData();
+      hideLoading();
+      showToast('History item deleted!');
+    }
+
+    function clearAll() {
+      showLoading();
+      const tbody = document.querySelector("#timeSheet tbody");
+      const rows = tbody.querySelectorAll('tr');
+      
+      rows.forEach((row, index) => {
+        setTimeout(() => {
+          row.style.transition = 'all 0.3s ease';
+          row.style.opacity = '0';
+          row.style.transform = 'translateX(-100px)';
+          setTimeout(() => {
+            if (row.parentNode) {
+              row.remove();
+            }
+            if (index === rows.length - 1) {
+              updateTotals();
+              hideLoading();
+              showToast('All entries cleared!');
+            }
+          }, 300);
+        }, index * 100);
+      });
+    }
+
+    function downloadPDF() {
+      showLoading();
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      const employeeRole = document.getElementById("employeeRole").value || "Employee";
+      const rows = document.querySelectorAll("#timeSheet tbody tr");
+      const weekStr = getWeekStr(rows);
+      
+      // Header
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.text("Enzo Dialer Time Sheet", 20, 20);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Employee: ${employeeName}`, 20, 30);
+      doc.text(`Role: ${employeeRole}`, 20, 40);
+      doc.text(`Payslip for ${weekStr}`, 20, 50);
+      doc.setLineWidth(0.5);
+      doc.line(20, 55, 190, 55);
+      
+      // Table
+      let y = 70;
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Date", 20, y);
+      doc.text("Day Off", 50, y);
+      doc.text("Work Hrs", 80, y);
+      doc.text("Break Hrs", 110, y);
+      doc.text("Total Hrs", 140, y);
+      doc.text("Amount", 170, y);
+      y += 10;
+      doc.setFont("helvetica", "normal");
+      
+      rows.forEach(row => {
+        let date = row.cells[0].querySelector("input").value || 'N/A';
+        let isDayOff = row.cells[1].querySelector("input").checked ? 'Yes' : 'No';
+        let work = row.cells[2].querySelector("input").value || '0';
+        let brk = row.cells[3].querySelector("input").value || '0';
+        let total = row.querySelector(".totalHours").innerText;
+        let amount = row.querySelector(".amount").innerText;
+        
+        doc.text(date, 20, y);
+        doc.text(isDayOff, 50, y);
+        doc.text(work, 80, y);
+        doc.text(brk, 110, y);
+        doc.text(total, 140, y);
+        doc.text(amount, 170, y);
+        y += 10;
+      });
+      
+      // Footer
+      y += 10;
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Grand Total: $${document.getElementById("totalValue").innerText}`, 20, y);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Enzo Dialer | support@enzodialer.com | Generated by Enzo Dialer Time Sheet", 20, 280);
+      
+      doc.save(`${employeeName}_timesheet_${new Date().toISOString().split('T')[0]}.pdf`);
+      hideLoading();
+      showToast('PDF exported successfully!');
+    }
+
+    function generatePDFBase64() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      const employeeRole = document.getElementById("employeeRole").value || "Employee";
+      const rows = document.querySelectorAll("#timeSheet tbody tr");
+      const weekStr = getWeekStr(rows);
+      
+      // Header
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.text("Enzo Dialer Time Sheet", 20, 20);
+      doc.setFontSize(14);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Employee: ${employeeName}`, 20, 30);
+      doc.text(`Role: ${employeeRole}`, 20, 40);
+      doc.text(`Payslip for ${weekStr}`, 20, 50);
+      doc.setLineWidth(0.5);
+      doc.line(20, 55, 190, 55);
+      
+      // Table
+      let y = 70;
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("Date", 20, y);
+      doc.text("Day Off", 50, y);
+      doc.text("Work Hrs", 80, y);
+      doc.text("Break Hrs", 110, y);
+      doc.text("Total Hrs", 140, y);
+      doc.text("Amount", 170, y);
+      y += 10;
+      doc.setFont("helvetica", "normal");
+      
+      rows.forEach(row => {
+        let date = row.cells[0].querySelector("input").value || 'N/A';
+        let isDayOff = row.cells[1].querySelector("input").checked ? 'Yes' : 'No';
+        let work = row.cells[2].querySelector("input").value || '0';
+        let brk = row.cells[3].querySelector("input").value || '0';
+        let total = row.querySelector(".totalHours").innerText;
+        let amount = row.querySelector(".amount").innerText;
+        
+        doc.text(date, 20, y);
+        doc.text(isDayOff, 50, y);
+        doc.text(work, 80, y);
+        doc.text(brk, 110, y);
+        doc.text(total, 140, y);
+        doc.text(amount, 170, y);
+        y += 10;
+      });
+      
+      // Footer
+      y += 10;
+      doc.setFontSize(16);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Grand Total: $${document.getElementById("totalValue").innerText}`, 20, y);
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text("Enzo Dialer | support@enzodialer.com | Generated by Enzo Dialer Time Sheet", 20, 280);
+      
+      return doc.output('datauristring').split(',')[1]; // Return Base64 string
+    }
+
+    function downloadCSV() {
+      showLoading();
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      let csvContent = "data:text/csv;charset=utf-8,";
+      
+      csvContent += "Employee,Date,Day Off,Working Hours,Break Hours,Total Hours,Amount\n";
+      
+      document.querySelectorAll("#timeSheet tbody tr").forEach(row => {
+        let date = row.cells[0].querySelector("input").value || '';
+        let isDayOff = row.cells[1].querySelector("input").checked ? 'Yes' : 'No';
+        let work = row.cells[2].querySelector("input").value || '0';
+        let brk = row.cells[3].querySelector("input").value || '0';
+        let total = row.querySelector(".totalHours").innerText;
+        let amt = row.querySelector(".amount").innerText.replace('$', '');
+        
+        csvContent += `"${employeeName}","${date}","${isDayOff}","${work}","${brk}","${total}","${amt}"\n`;
+      });
+      
+      csvContent += `"","","","","","Grand Total:","${document.getElementById("totalValue").innerText}"\n`;
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `${employeeName}_timesheet_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      hideLoading();
+      showToast('CSV exported successfully!');
+    }
+
+    function downloadXLSX() {
+      showLoading();
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      let wb = XLSX.utils.book_new();
+      let ws_data = [["Employee", "Date", "Day Off", "Working Hours", "Break Hours", "Total Hours", "Amount"]];
+      
+      document.querySelectorAll("#timeSheet tbody tr").forEach(row => {
+        let date = row.cells[0].querySelector("input").value || '';
+        let isDayOff = row.cells[1].querySelector("input").checked ? 'Yes' : 'No';
+        let work = row.cells[2].querySelector("input").value || '0';
+        let brk = row.cells[3].querySelector("input").value || '0';
+        let total = row.querySelector(".totalHours").innerText;
+        let amt = row.querySelector(".amount").innerText.replace('$', '');
+        ws_data.push([employeeName, date, isDayOff, work, brk, total, amt]);
+      });
+      
+      ws_data.push(['', '', '', '', '', 'Grand Total:', document.getElementById("totalValue").innerText]);
+      
+      let ws = XLSX.utils.aoa_to_sheet(ws_data);
+      XLSX.utils.book_append_sheet(wb, ws, "Timesheet");
+      XLSX.writeFile(wb, `${employeeName}_timesheet_${new Date().toISOString().split('T')[0]}.xlsx`);
+      hideLoading();
+      showToast('XLSX exported successfully!');
+    }
+
+    function emailData() {
+      showLoading();
+      const employeeName = document.getElementById("employeeName").value || "Unknown";
+      const weekStr = getWeekStr(document.querySelectorAll("#timeSheet tbody tr"));
+      const pdfBase64 = generatePDFBase64();
+      const filename = `${employeeName}_timesheet_${new Date().toISOString().split('T')[0]}.pdf`;
+      const subject = `${employeeName} Timesheet ${new Date().toISOString().split('T')[0]}`;
+      const body = `Attached is the timesheet for ${employeeName} for ${weekStr}.\n\nPlease manually attach the PDF if it does not appear in your email client.\n\nGenerated by Enzo Dialer Time Sheet`;
+      
+      // Create a temporary link to download the PDF as a fallback
+      const tempLink = document.createElement("a");
+      tempLink.href = `data:application/pdf;base64,${pdfBase64}`;
+      tempLink.download = filename;
+      document.body.appendChild(tempLink);
+      tempLink.click();
+      document.body.removeChild(tempLink);
+      
+      // Attempt to open email client with attachment
+      window.location.href = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}&attachment=data:application/pdf;base64,${pdfBase64};${encodeURIComponent(filename)}`;
+      
+      hideLoading();
+      showToast('Email client opened! PDF downloaded as fallback.');
+    }
+
+    function showToast(message) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      
+      setTimeout(() => toast.classList.add('show'), 100);
+      setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+          if (document.body.contains(toast)) {
+            document.body.removeChild(toast);
+          }
+        }, 400);
+      }, 3000);
+    }
+
+    document.getElementById("hourlyRate").addEventListener("input", updateTotals);
+    document.getElementById("bonus").addEventListener("input", updateTotals);
+    document.getElementById("employeeRole").addEventListener("input", () => { if (currentUser) saveUserData(); });
+
+    document.addEventListener('DOMContentLoaded', function() {
+      applyTheme();
+      applyCustomTheme();
+      const storedUser = localStorage.getItem('currentUser');
+      if (storedUser && users[storedUser]) {
+        currentUser = storedUser;
+        loadUserData();
+        document.getElementById('loginBtn').style.display = 'none';
+        document.getElementById('logoutBtn').style.display = 'block';
+      } else {
+        document.getElementById('loginBtn').style.display = 'block';
+        document.getElementById('logoutBtn').style.display = 'none';
+        document.getElementById('employeeName').value = 'Guest';
+        document.getElementById('employeeRole').value = 'Employee';
+        document.getElementById('hourlyRate').value = 0;
+      }
+      displayHistory();
+      updateLastModified();
+    });
+
+    document.addEventListener('keydown', function(e) {
+      if (e.ctrlKey) {
+        switch(e.key) {
+          case 'd':
+            e.preventDefault();
+            addDay();
+            break;
+          case 's':
+            e.preventDefault();
+            saveHistory();
+            break;
+        }
+      }
+    });
+  </script>
+</body>
+</html>
