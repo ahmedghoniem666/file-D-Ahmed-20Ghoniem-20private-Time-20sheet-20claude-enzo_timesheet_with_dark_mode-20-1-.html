@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enzo Dialer Time Sheet</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="loginModal">
+    <div id="loginForm">
+      <h2>Login / Register</h2>
+      <input id="username" placeholder="Username" aria-label="Username">
+      <input id="password" type="password" placeholder="Password" aria-label="Password">
+      <p id="info">Accounts inactive for 6 months will be deleted.</p>
+      <button onclick="register()">Register</button>
+      <button onclick="login()">Login</button>
+      <p id="message"></p>
+    </div>
+  </div>
+
+  <div class="container" id="appContainer" style="display: none;">
+    <div class="header">
+      <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle Theme">🌙 Dark Mode</button>
+      <h1>🕐 Enzo Dialer Time Sheet</h1>
+      <p>Time Tracking System</p>
+    </div>
+
+    <div class="settings-bar">
+      <div class="input-group">
+        <label for="employeeName">Employee Name</label>
+        <input type="text" id="employeeName" value="Enzo" placeholder="Enter name">
+      </div>
+      <div class="input-group">
+        <label for="hourlyRate">Hourly Rate (USD)</label>
+        <input type="number" id="hourlyRate" value="3" step="0.01" min="0">
+      </div>
+      <div class="input-group">
+        <label for="bonus">Bonus (USD)</label>
+        <input type="number" id="bonus" value="0" step="0.01" min="0">
+      </div>
+      <div class="input-group">
+        <label>Payment Calculation</label>
+        <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+          <label style="display: flex; align-items: center; gap: 5px; font-weight: normal; cursor: pointer;">
+            <input type="checkbox" id="includeBreaks" onchange="updateTotals()" style="width: auto;">
+            Include breaks in payment
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-content">
+      <div class="table-container">
+        <table id="timeSheet">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Day Off</th>
+              <th>Work Hrs</th>
+              <th>Break Hrs</th>
+              <th>Total Hrs</th>
+              <th>Amount</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="summary-section">
+        <div class="summary-grid">
+          <div class="summary-item">
+            <h3>Total Working Hours</h3>
+            <div class="value" id="totalWorkingHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Total Break Hours</h3>
+            <div class="value" id="totalBreakHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Total Hours</h3>
+            <div class="value" id="totalHours">0.00</div>
+          </div>
+          <div class="summary-item">
+            <h3>Base Pay</h3>
+            <div class="value" id="basePay">$0.00</div>
+          </div>
+        </div>
+        <div class="grand-total">
+          <h2>Grand Total: $<span id="totalValue">0.00</span></h2>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button class="btn btn-primary" onclick="addDay()" aria-label="Add Day">📅 Add Day</button>
+        <button class="btn btn-primary" onclick="addWeek()" aria-label="Add Week">📆 Add Week</button>
+        <button class="btn btn-success" onclick="saveHistory()" aria-label="Save History">💾 Save History</button>
+        <button class="btn btn-warning" onclick="downloadPDF()" aria-label="Download PDF">📄 Download PDF</button>
+        <button class="btn btn-info" onclick="downloadCSV()" aria-label="Download CSV">📊 Download CSV</button>
+        <button class="btn btn-info" onclick="downloadXLSX()" aria-label="Download XLSX">📈 Download XLSX</button>
+        <button class="btn btn-info" onclick="emailData()" aria-label="Email Data">📧 Email Data</button>
+        <button class="btn btn-warning" onclick="clearAll()" aria-label="Clear All">🗑️ Clear All</button>
+        <button class="btn btn-warning" onclick="logout()" aria-label="Logout">🚪 Logout</button>
+      </div>
+
+      <div class="history-section">
+        <h2>📋 Payment History</h2>
+        <div id="history" class="history-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

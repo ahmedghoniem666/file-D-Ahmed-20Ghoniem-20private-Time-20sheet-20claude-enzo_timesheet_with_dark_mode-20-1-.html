@@ -1,0 +1,1 @@
+work = Math.max(0, work); // Prevent negative
