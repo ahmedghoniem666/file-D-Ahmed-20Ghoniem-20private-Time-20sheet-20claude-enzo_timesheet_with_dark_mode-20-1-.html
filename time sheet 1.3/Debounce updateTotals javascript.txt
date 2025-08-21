@@ -1,7 +1,0 @@
-let debounceTimer;
-function updateTotals() {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
-    // original code...
-  }, 300);
-}
