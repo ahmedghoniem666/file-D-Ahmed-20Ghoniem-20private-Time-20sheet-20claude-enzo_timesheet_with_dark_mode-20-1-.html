@@ -1,43 +1,4 @@
-<script type="text/javascript">
-  var gk_isXlsx = false;
-  var gk_xlsxFileLookup = {};
-  var gk_fileData = {};
-  function filledCell(cell) {
-    return cell !== '' && cell != null;
-  }
-  function loadFileData(filename) {
-  if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-      try {
-          var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
-          var firstSheetName = workbook.SheetNames[0];
-          var worksheet = workbook.Sheets[firstSheetName];
-
-          // Convert sheet to JSON to filter blank rows
-          var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
-          // Filter out blank rows (rows where all cells are empty, null, or undefined)
-          var filteredData = jsonData.filter(row => row.some(filledCell));
-
-          // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-          var headerRowIndex = filteredData.findIndex((row, index) =>
-            row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
-          );
-          // Fallback
-          if (headerRowIndex === -1 || headerRowIndex > 25) {
-            headerRowIndex = 0;
-          }
-
-          // Convert filtered JSON back to CSV
-          var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-          csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-          return csv;
-      } catch (e) {
-          console.error(e);
-          return "";
-      }
-  }
-  return gk_fileData[filename] || "";
-  }
-  </script><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -47,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://apis.google.com/js/api.js" async defer onload="initGapi()"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
 --primary-color: #1e3a8a;
@@ -1047,9 +1009,9 @@ td input[type="date"] {
 <div id="loginModal" style="display: none;">
 <div id="loginForm">
 <h2>Login / Register</h2>
-<input id="username" placeholder="Username">
+<input id="email" placeholder="Email">
 <input id="password" type="password" placeholder="Password">
-<p id="info">Accounts inactive for 6 months will be deleted.</p>
+<p id="info">Use email and password for authentication.</p>
 <button onclick="register()">Register</button>
 <button onclick="login()">Login</button>
 <p id="message"></p>
@@ -1233,25 +1195,24 @@ if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
 return gk_fileData[filename] || "";
 }
 
-const STORAGE_KEY = 'enzo_timesheet_users';
 const THEME_KEY = 'enzo_timesheet_theme';
 const COLOR_KEY = 'enzo_timesheet_color';
-let users = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
 let currentUser = null;
 let historyData = [];
 let isDarkMode = localStorage.getItem(THEME_KEY) === 'dark';
 let lastAction = null;
 
-// Google Drive Integration Setup - Replace with your own credentials from Google Cloud Console
-// 1. Create a project in https://console.cloud.google.com
-// 2. Enable Drive API
-// 3. Create OAuth Client ID (Web application)
-// 4. Add authorized JavaScript origins (e.g., http://localhost)
-// 5. Get Client ID and API Key
-// 6. For Picker, get App ID (Project Number)
+// Replace with your Supabase credentials
+const supabaseUrl = 'https://xsnvjpbhbxxnpqxlnxyz.supabase.co'; // Replace with your Supabase URL
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzbnZqcGJoYnh4bnBxeGxueHl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU4MTE4MzcsImV4cCI6MjA3MTM4NzgzN30.87nKuI61VmLzIwbW-DagBDigf2bmykuyisSz6NnJIzg'; // Replace with your Supabase anon key
+const supabase = Supabase.createClient(supabaseUrl, supabaseKey); // Note: Use the correct createClient function from @supabase/supabase-js
+
+// Google Drive Integration Setup - Replace with your own credentials
+// Note: The "invalid API developer key" error likely means the apiKey below is invalid or not enabled for your project.
+// Go to Google Cloud Console, enable Drive API and Picker API, and generate a new API key.
 let clientId = '436453721202-5sla62q3831mivqsg8fi3d2ikkfn9rk2.apps.googleusercontent.com';
-let apiKey = 'AIzaSyAay2U_9KPZje3lb2zZ34RBaHrnzCsx1wY';
-let appId = '436453721202'; // For Google Picker
+let apiKey = 'AIzaSyAay2U_9KPZje3lb2zZ34RBaHrnzCsx1wY'; // This is likely invalid; replace with your own
+let appId = '436453721202';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 let accessToken;
@@ -1266,6 +1227,9 @@ gapi.client.init({
   discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
 }).then(() => {
   // Google API ready
+}).catch((err) => {
+  console.error('Google API init error:', err);
+  showToast('Google API initialization failed. Check API key.');
 });
 }
 
@@ -1326,65 +1290,48 @@ b = Math.min(255, Math.round(b + (255 - b) * (percent / 100)));
 return `#${(r.toString(16).padStart(2, '0'))}${(g.toString(16).padStart(2, '0'))}${(b.toString(16).padStart(2, '0'))}`;
 }
 
-cleanupUsers();
-
-function cleanupUsers() {
-const now = Date.now();
-const sixMonthsMs = 180 * 24 * 60 * 60 * 1000;
-Object.keys(users).forEach(username => {
-  if (now - users[username].lastLogin > sixMonthsMs) {
-    delete users[username];
-  }
-});
-saveUsers();
-}
-
-function saveUsers() {
-localStorage.setItem(STORAGE_KEY, JSON.stringify(users));
-updateLastModified();
-}
-
-function register() {
+async function register() {
 showLoading();
-const username = document.getElementById('username').value.trim();
+const email = document.getElementById('email').value.trim();
 const password = document.getElementById('password').value;
-if (!username || password.length < 6) {
-  setMessage('Username required, password must be at least 6 characters.');
+if (!email || password.length < 6) {
+  setMessage('Valid email required, password must be at least 6 characters.');
   hideLoading();
   return;
 }
-if (users[username]) {
-  setMessage('Username already taken.');
+const { data, error } = await supabase.auth.signUp({
+  email,
+  password
+});
+if (error) {
+  setMessage(error.message);
   hideLoading();
   return;
 }
-users[username] = {
-  password: password,
-  lastLogin: Date.now(),
-  data: {
-    settings: { employeeName: username, employeeRole: 'Employee', hourlyRate: 0, bonus: 0, includeBreaks: false },
-    rows: [],
-    history: []
-  }
+const user = data.user;
+const defaultData = {
+  settings: { employeeName: email.split('@')[0], employeeRole: 'Employee', hourlyRate: 0, bonus: 0, includeBreaks: false },
+  rows: []
 };
-saveUsers();
+await supabase.from('user_data').insert({ id: user.id, data: defaultData });
 login();
 hideLoading();
 }
 
-function login() {
+async function login() {
 showLoading();
-const username = document.getElementById('username').value.trim();
+const email = document.getElementById('email').value.trim();
 const password = document.getElementById('password').value;
-if (!users[username] || users[username].password !== password) {
-  setMessage('Invalid username or password.');
+const { data, error } = await supabase.auth.signInWithPassword({
+  email,
+  password
+});
+if (error) {
+  setMessage(error.message);
   hideLoading();
   return;
 }
-currentUser = username;
-users[username].lastLogin = Date.now();
-saveUsers();
-localStorage.setItem('currentUser', username);
+currentUser = data.user.id;
 loadUserData();
 document.getElementById('loginModal').style.display = 'none';
 document.getElementById('loginBtn').style.display = 'none';
@@ -1397,51 +1344,58 @@ function setMessage(msg) {
 document.getElementById('message').innerText = msg;
 }
 
-function loadUserData() {
+async function loadUserData() {
 if (!currentUser) return;
-const data = users[currentUser].data;
-document.getElementById('employeeName').value = data.settings.employeeName;
-document.getElementById('employeeRole').value = data.settings.employeeRole || 'Employee';
-document.getElementById('hourlyRate').value = data.settings.hourlyRate;
-document.getElementById('bonus').value = data.settings.bonus;
-document.getElementById('includeBreaks').checked = data.settings.includeBreaks;
-historyData = data.history || [];
+const { data: dbData, error } = await supabase.from('user_data').select('data').eq('id', currentUser).single();
+if (error || !dbData) {
+  console.error(error);
+  return;
+}
+const userData = dbData.data;
+document.getElementById('employeeName').value = userData.settings.employeeName;
+document.getElementById('employeeRole').value = userData.settings.employeeRole || 'Employee';
+document.getElementById('hourlyRate').value = userData.settings.hourlyRate;
+document.getElementById('bonus').value = userData.settings.bonus;
+document.getElementById('includeBreaks').checked = userData.settings.includeBreaks;
+historyData = []; // History not loaded from DB
 displayHistory();
 const tbody = document.querySelector('#timeSheet tbody');
 tbody.innerHTML = '';
-data.rows.forEach(rowData => {
+userData.rows.forEach(rowData => {
   addDay(rowData.date, rowData.workHours, rowData.breakHours, rowData.dayOff);
 });
 updateTotals();
 }
 
-function saveUserData() {
+async function saveUserData() {
 if (!currentUser) return;
-const data = users[currentUser].data;
-data.settings = {
-  employeeName: document.getElementById('employeeName').value,
-  employeeRole: document.getElementById('employeeRole').value,
-  hourlyRate: parseFloat(document.getElementById('hourlyRate').value) || 0,
-  bonus: parseFloat(document.getElementById('bonus').value) || 0,
-  includeBreaks: document.getElementById('includeBreaks').checked
+const userData = {
+  settings: {
+    employeeName: document.getElementById('employeeName').value,
+    employeeRole: document.getElementById('employeeRole').value,
+    hourlyRate: parseFloat(document.getElementById('hourlyRate').value) || 0,
+    bonus: parseFloat(document.getElementById('bonus').value) || 0,
+    includeBreaks: document.getElementById('includeBreaks').checked
+  },
+  rows: []
 };
-data.rows = [];
 document.querySelectorAll('#timeSheet tbody tr').forEach(row => {
-  data.rows.push({
+  userData.rows.push({
     date: row.cells[0].querySelector('input').value,
     dayOff: row.cells[1].querySelector('input').checked,
     workHours: parseFloat(row.cells[2].querySelector('input').value) || 0,
     breakHours: parseFloat(row.cells[3].querySelector('input').value) || 0
   });
 });
-data.history = historyData;
-saveUsers();
+const { error } = await supabase.from('user_data').upsert({ id: currentUser, data: userData });
+if (error) console.error(error);
+updateLastModified();
 }
 
-function logout() {
+async function logout() {
 showLoading();
-if (currentUser) saveUserData();
-localStorage.removeItem('currentUser');
+if (currentUser) await saveUserData();
+await supabase.auth.signOut();
 currentUser = null;
 document.getElementById('loginModal').style.display = 'none';
 document.getElementById('loginBtn').style.display = 'block';
@@ -1718,9 +1672,8 @@ const historyItem = {
 
 historyData.push(historyItem);
 displayHistory();
-if (currentUser) saveUserData();
 hideLoading();
-showToast('History saved successfully!');
+showToast('History saved successfully! Note: History is session-only; export to save permanently.');
 }
 
 function displayHistory() {
@@ -1728,7 +1681,7 @@ const historyContainer = document.getElementById("history");
 historyContainer.innerHTML = '';
 
 if (historyData.length === 0) {
-  historyContainer.innerHTML = '<p style="text-align: center; color: #6b7280;">No history items saved yet.</p>';
+  historyContainer.innerHTML = '<p style="text-align: center; color: #6b7280;">No history items saved yet (session-only).</p>';
   return;
 }
 
@@ -1754,7 +1707,6 @@ function deleteHistory(id) {
 showLoading();
 historyData = historyData.filter(item => item.id !== id);
 displayHistory();
-if (currentUser) saveUserData();
 hideLoading();
 showToast('History item deleted!');
 }
@@ -2008,7 +1960,7 @@ setTimeout(() => {
 }, 3000);
 }
 
-// New Functions for JSON Export/Import
+// JSON Export/Import (for history and data, but history not persisted in DB)
 function exportJSON() {
 showLoading();
 if (!currentUser) {
@@ -2016,16 +1968,34 @@ if (!currentUser) {
   showToast('Please login to export data.');
   return;
 }
-const data = users[currentUser].data;
+const data = {
+  settings: {
+    employeeName: document.getElementById('employeeName').value,
+    employeeRole: document.getElementById('employeeRole').value,
+    hourlyRate: parseFloat(document.getElementById('hourlyRate').value) || 0,
+    bonus: parseFloat(document.getElementById('bonus').value) || 0,
+    includeBreaks: document.getElementById('includeBreaks').checked
+  },
+  rows: [],
+  history: historyData // Include history in export for manual saving
+};
+document.querySelectorAll('#timeSheet tbody tr').forEach(row => {
+  data.rows.push({
+    date: row.cells[0].querySelector('input').value,
+    dayOff: row.cells[1].querySelector('input').checked,
+    workHours: parseFloat(row.cells[2].querySelector('input').value) || 0,
+    breakHours: parseFloat(row.cells[3].querySelector('input').value) || 0
+  });
+});
 const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
 const url = URL.createObjectURL(blob);
 const a = document.createElement('a');
 a.href = url;
-a.download = `${currentUser}_timesheet.json`;
+a.download = `timesheet_${new Date().toISOString().split('T')[0]}.json`;
 a.click();
 URL.revokeObjectURL(url);
 hideLoading();
-showToast('JSON exported successfully!');
+showToast('JSON exported successfully! (Includes history for manual storage)');
 }
 
 function importJSON(file) {
@@ -2036,14 +2006,27 @@ if (!currentUser) {
   return;
 }
 const reader = new FileReader();
-reader.onload = function(e) {
+reader.onload = async function(e) {
   try {
     const importedData = JSON.parse(e.target.result);
-    users[currentUser].data = importedData;
-    saveUsers();
-    loadUserData();
+    // Load settings and rows to UI and save to DB
+    document.getElementById('employeeName').value = importedData.settings.employeeName;
+    document.getElementById('employeeRole').value = importedData.settings.employeeRole || 'Employee';
+    document.getElementById('hourlyRate').value = importedData.settings.hourlyRate;
+    document.getElementById('bonus').value = importedData.settings.bonus;
+    document.getElementById('includeBreaks').checked = importedData.settings.includeBreaks;
+    const tbody = document.querySelector('#timeSheet tbody');
+    tbody.innerHTML = '';
+    importedData.rows.forEach(rowData => {
+      addDay(rowData.date, rowData.workHours, rowData.breakHours, rowData.dayOff);
+    });
+    await saveUserData();
+    // Load history to session only
+    historyData = importedData.history || [];
+    displayHistory();
+    updateTotals();
     hideLoading();
-    showToast('JSON imported successfully!');
+    showToast('JSON imported successfully! (History loaded to session)');
   } catch (err) {
     hideLoading();
     showToast('Invalid JSON file.');
@@ -2052,7 +2035,7 @@ reader.onload = function(e) {
 reader.readAsText(file);
 }
 
-// New Functions for Google Drive Export/Import
+// Google Drive Export/Import
 function exportToDrive() {
 showLoading();
 if (!currentUser) {
@@ -2060,8 +2043,23 @@ if (!currentUser) {
   showToast('Please login to export data.');
   return;
 }
-const data = JSON.stringify(users[currentUser].data, null, 2);
-const filename = `${currentUser}_timesheet.json`;
+const data = JSON.stringify({
+  settings: {
+    employeeName: document.getElementById('employeeName').value,
+    employeeRole: document.getElementById('employeeRole').value,
+    hourlyRate: parseFloat(document.getElementById('hourlyRate').value) || 0,
+    bonus: parseFloat(document.getElementById('bonus').value) || 0,
+    includeBreaks: document.getElementById('includeBreaks').checked
+  },
+  rows: document.querySelectorAll('#timeSheet tbody tr').map(row => ({
+    date: row.cells[0].querySelector('input').value,
+    dayOff: row.cells[1].querySelector('input').checked,
+    workHours: parseFloat(row.cells[2].querySelector('input').value) || 0,
+    breakHours: parseFloat(row.cells[3].querySelector('input').value) || 0
+  })),
+  history: historyData
+}, null, 2);
+const filename = `timesheet_${new Date().toISOString().split('T')[0]}.json`;
 const mimeType = 'application/json';
 requestAccessToken(() => {
   const metadata = {
@@ -2082,7 +2080,7 @@ requestAccessToken(() => {
     }).catch((err) => {
       console.error('Error uploading to Drive:', err);
       hideLoading();
-      showToast('Error exporting to Drive.');
+      showToast('Error exporting to Drive. Check console for details.');
     });
 });
 }
@@ -2117,12 +2115,23 @@ if (data.action === google.picker.Action.PICKED) {
   fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
     headers: new Headers({ 'Authorization': 'Bearer ' + accessToken }),
   }).then((res) => res.text())
-    .then((content) => {
+    .then(async (content) => {
       try {
         const importedData = JSON.parse(content);
-        users[currentUser].data = importedData;
-        saveUsers();
-        loadUserData();
+        document.getElementById('employeeName').value = importedData.settings.employeeName;
+        document.getElementById('employeeRole').value = importedData.settings.employeeRole || 'Employee';
+        document.getElementById('hourlyRate').value = importedData.settings.hourlyRate;
+        document.getElementById('bonus').value = importedData.settings.bonus;
+        document.getElementById('includeBreaks').checked = importedData.settings.includeBreaks;
+        const tbody = document.querySelector('#timeSheet tbody');
+        tbody.innerHTML = '';
+        importedData.rows.forEach(rowData => {
+          addDay(rowData.date, rowData.workHours, rowData.breakHours, rowData.dayOff);
+        });
+        await saveUserData();
+        historyData = importedData.history || [];
+        displayHistory();
+        updateTotals();
         hideLoading();
         showToast('Imported from Google Drive!');
       } catch (err) {
@@ -2137,7 +2146,7 @@ if (data.action === google.picker.Action.PICKED) {
 }
 }
 
-// New Function for Insightful Upload
+// Insightful Upload
 function processInsightfulFile(file) {
 showLoading();
 const reader = new FileReader();
@@ -2178,7 +2187,7 @@ reader.onload = function(e) {
             let [h, m] = hoursStr.split(':').map(Number);
             hours = h + (m / 60);
           }
-          addDay(date, hours, 0, false); // Assuming no break hours in export
+          addDay(date, hours, 0, false);
         }
       }
     }
@@ -2207,7 +2216,7 @@ reader.onload = function(e) {
         if (!isNaN(parsedDate)) {
           date = parsedDate.toISOString().split('T')[0];
           let hours = parseFloat(row[hoursIdx]) || 0;
-          addDay(date, hours, 0, false); // Assuming no break hours
+          addDay(date, hours, 0, false);
         }
       }
     }
@@ -2227,13 +2236,13 @@ document.getElementById("hourlyRate").addEventListener("input", updateTotals);
 document.getElementById("bonus").addEventListener("input", updateTotals);
 document.getElementById("employeeRole").addEventListener("input", () => { if (currentUser) saveUserData(); });
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
 applyTheme();
 applyCustomTheme();
-const storedUser = localStorage.getItem('currentUser');
-if (storedUser && users[storedUser]) {
-  currentUser = storedUser;
-  loadUserData();
+const { data: { session } } = await supabase.auth.getSession();
+if (session) {
+  currentUser = session.user.id;
+  await loadUserData();
   document.getElementById('loginBtn').style.display = 'none';
   document.getElementById('logoutBtn').style.display = 'block';
 } else {
