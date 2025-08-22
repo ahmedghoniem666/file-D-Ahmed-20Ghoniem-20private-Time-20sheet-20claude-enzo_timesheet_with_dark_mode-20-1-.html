@@ -8,6 +8,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://apis.google.com/js/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -168,11 +170,46 @@
 </div>
 </div>
 
+<div id="auth-section">
+  <h2>Login / Register</h2>
+  <input type="email" id="email" placeholder="Email">
+  <input type="password" id="password" placeholder="Password">
+  <input type="text" id="employee-name" placeholder="Employee Name">
+  <input type="text" id="employee-role" placeholder="Employee Role">
+  <input type="number" id="hourly-rate" placeholder="Hourly Rate (USD)" step="0.01">
+  <input type="number" id="bonus" placeholder="Bonus (USD)" step="0.01">
+  <button onclick="register()">Register</button>
+  <button onclick="login()">Login</button>
+  <button onclick="logout()" style="display:none" id="logout-btn">Logout</button>
+</div>
+<script type="module">
+  import { registerUser, loginUser, logoutUser, initSupabase } from './js/database.js';
+  window.register = async () => {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const employeeName = document.getElementById('employee-name').value;
+    const employeeRole = document.getElementById('employee-role').value;
+    const hourlyRate = document.getElementById('hourly-rate').value;
+    const bonus = document.getElementById('bonus').value;
+    await registerUser(email, password, employeeName, employeeRole, hourlyRate, bonus);
+  };
+  window.login = async () => {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    await loginUser(email, password);
+  };
+  window.logout = async () => {
+    await logoutUser();
+  };
+  initSupabase();
+</script>
+
 <script src="js/init.js"></script>
 <script src="js/auth.js"></script>
 <script src="js/theme.js"></script>
 <script src="js/timesheet.js"></script>
 <script src="js/export.js"></script>
 <script src="js/drive.js"></script>
+<script src="js/database.js" type="module"></script>
 </body>
 </html>

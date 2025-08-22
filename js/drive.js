@@ -13,9 +13,50 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 let accessToken;
 
+// Dynamically reload Google API script if needed
+function reloadGapiScript(callback) {
+  console.log('Reloading Google API script...');
+  const existingScript = document.querySelector('script[src="https://apis.google.com/js/api.js"]');
+  if (existingScript) {
+    existingScript.remove();
+  }
+  const script = document.createElement('script');
+  script.src = 'https://apis.google.com/js/api.js';
+  script.async = true;
+  script.defer = true;
+  script.onload = () => {
+    console.log('Google API script loaded');
+    callback();
+  };
+  script.onerror = () => {
+    console.error('Failed to load Google API script');
+    showToast('Failed to load Google API script.');
+  };
+  document.head.appendChild(script);
+}
+
 // Initialize Google API client and Picker
 function initGapi() {
-  gapi.load('client:picker', initializeGapiClient);
+  if (typeof gapi === 'undefined') {
+    console.warn('gapi not available, attempting to reload');
+    reloadGapiScript(() => {
+      gapi.load('client:picker', {
+        callback: initializeGapiClient,
+        onerror: () => {
+          console.error('Failed to load gapi client:picker');
+          showToast('Failed to load Google Picker library.');
+        }
+      });
+    });
+    return;
+  }
+  gapi.load('client:picker', {
+    callback: initializeGapiClient,
+    onerror: () => {
+      console.error('Failed to load gapi client:picker');
+      showToast('Failed to load Google Picker library.');
+    }
+  });
 }
 
 // Initialize Google API client
@@ -56,6 +97,11 @@ function requestAccessToken(callback) {
 
 // Helper to request a new access token
 function requestNewToken(callback) {
+  if (typeof google === 'undefined' || !google.accounts || !google.accounts.oauth2) {
+    console.error('Google Identity Services script not loaded');
+    showToast('Google authentication script failed to load.');
+    return;
+  }
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: SCOPES,
@@ -106,7 +152,7 @@ function exportToDrive() {
     const metadata = {
       name: filename,
       mimeType: mimeType,
-      parents: ['root'] // Optional: specify folder, 'root' is default
+      parents: ['root']
     };
 
     const formData = new FormData();
@@ -148,26 +194,65 @@ function importFromDrive() {
     showToast('Please login to import data.');
     return;
   }
-  requestAccessToken(() => {
-    const view = new google.picker.View(google.picker.ViewId.DOCS);
-    view.setMimeTypes('application/json');
-    const picker = new google.picker.PickerBuilder()
-      .enableFeature(google.picker.Feature.NAV_HIDDEN)
-      .setAppId(appId)
-      .setOAuthToken(accessToken)
-      .addView(view)
-      .setCallback(pickerCallback)
-      .build();
-    picker.setVisible(true);
-    hideLoading();
+  // Ensure gapi is loaded before attempting Picker
+  if (typeof gapi === 'undefined') {
+    console.warn('gapi not available, attempting to reload');
+    reloadGapiScript(() => {
+      loadPicker();
+    });
+    return;
+  }
+  loadPicker();
+}
+
+// Helper to load Picker
+function loadPicker() {
+  gapi.load('picker', {
+    callback: () => {
+      console.log('Picker module loaded');
+      requestAccessToken(() => {
+        if (typeof google === 'undefined' || typeof google.picker === 'undefined') {
+          console.error('Google Picker library not loaded');
+          showToast('Google Picker library failed to load.');
+          hideLoading();
+          return;
+        }
+        try {
+          const view = new google.picker.View(google.picker.ViewId.DOCS);
+          view.setMimeTypes('application/json,text/plain');
+          console.log('Initializing Google Picker with token:', accessToken);
+          const picker = new google.picker.PickerBuilder()
+            .setAppId(appId)
+            .setOAuthToken(accessToken)
+            .addView(view)
+            .setCallback(pickerCallback)
+            .build();
+          console.log('Setting Picker visible...');
+          picker.setVisible(true);
+          hideLoading();
+        } catch (err) {
+          console.error('Error initializing Google Picker:', err);
+          hideLoading();
+          showToast(`Failed to launch Google Picker: ${err.message}`);
+        }
+      });
+    },
+    onerror: () => {
+      console.error('Failed to load Picker module');
+      showToast('Failed to load Google Picker library.');
+      hideLoading();
+    }
   });
 }
 
 // Handle Picker callback
 function pickerCallback(data) {
+  console.log('Picker callback data:', data);
   if (data.action === google.picker.Action.PICKED) {
     showLoading();
     const fileId = data.docs[0].id;
+    const fileName = data.docs[0].name;
+    console.log('Selected file:', { id: fileId, name: fileName });
     fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
       headers: { 'Authorization': 'Bearer ' + accessToken }
     }).then(res => {
@@ -184,7 +269,7 @@ function pickerCallback(data) {
         saveUsers();
         loadUserData();
         hideLoading();
-        showToast('Imported from Google Drive!');
+        showToast(`Imported "${fileName}" from Google Drive!`);
       } catch (err) {
         console.error('Error parsing JSON:', err);
         hideLoading();
@@ -195,5 +280,8 @@ function pickerCallback(data) {
       hideLoading();
       showToast(`Error importing from Drive: ${err.message}`);
     });
+  } else if (data.action === google.picker.Action.CANCEL) {
+    console.log('Picker cancelled by user');
+    showToast('File selection cancelled.');
   }
 }
