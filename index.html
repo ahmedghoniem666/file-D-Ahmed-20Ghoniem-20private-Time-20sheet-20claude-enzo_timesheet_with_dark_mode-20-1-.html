@@ -170,18 +170,7 @@
 </div>
 </div>
 
-<div id="auth-section">
-  <h2>Login / Register</h2>
-  <input type="email" id="email" placeholder="Email">
-  <input type="password" id="password" placeholder="Password">
-  <input type="text" id="employee-name" placeholder="Employee Name">
-  <input type="text" id="employee-role" placeholder="Employee Role">
-  <input type="number" id="hourly-rate" placeholder="Hourly Rate (USD)" step="0.01">
-  <input type="number" id="bonus" placeholder="Bonus (USD)" step="0.01">
-  <button onclick="register()">Register</button>
-  <button onclick="login()">Login</button>
-  <button onclick="logout()" style="display:none" id="logout-btn">Logout</button>
-</div>
+
 <script type="module">
   import { registerUser, loginUser, logoutUser, initSupabase } from './js/database.js';
   window.register = async () => {
