@@ -1,204 +1,389 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Enzo Dialer Time Sheet</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://apis.google.com/js/api.js" async defer></script>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="
+        script-src 'self' https://apis.google.com https://accounts.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval' blob: data:;
+        connect-src 'self' https://xsnvjpbhbxxnpqxlnxyz.supabase.co https://www.googleapis.com https://content.googleapis.com;
+        frame-src https://accounts.google.com https://content.googleapis.com;
+    ">
+    <title>EnzoPay - Professional Payroll Management</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
+    <script src="https://apis.google.com/js/api.js" async defer></script>
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.44.4"></script>
+    <script src="js/utils.js" defer></script>
+    <script src="js/auth.js" defer></script>
+    <script src="js/init.js" defer></script>
+    <script src="js/theme.js" defer></script>
+    <script src="js/timesheet.js" defer></script>
+    <script src="js/export.js" defer></script>
+    <script src="js/drive.js" defer></script>
 </head>
 <body>
-<div id="loginModal" style="display: none;">
-<div id="loginForm">
-<h2>Login / Register</h2>
-<input id="username" placeholder="Username">
-<input id="password" type="password" placeholder="Password">
-<p id="info">Accounts inactive for 6 months will be deleted.</p>
-<button onclick="register()">Register</button>
-<button onclick="login()">Login</button>
-<p id="message"></p>
-</div>
-</div>
-
-<div id="colorPickerModal" class="color-picker-modal">
-<div class="color-picker-box">
-<h3>Customize Theme Color</h3>
-<p>Choose a primary color for the application</p>
-<input type="color" id="colorPicker" value="#1e3a8a">
-<button class="apply-btn" onclick="applyCustomColor()">Apply</button>
-<button class="cancel-btn" onclick="closeColorPicker()">Cancel</button>
-</div>
-</div>
-
-<div id="confirmDialog" class="confirm-dialog">
-<div class="confirm-box">
-<h3 id="confirmTitle">Confirm Action</h3>
-<p id="confirmMessage"></p>
-<button class="confirm-btn" onclick="confirmAction()">Confirm</button>
-<button class="cancel-btn" onclick="cancelAction()">Cancel</button>
-</div>
-</div>
-
-<div id="loadingOverlay" class="loading-overlay">
-<div class="loader"></div>
-</div>
-
-<div class="container" id="appContainer" style="display: block;">
-<div class="header">
-<div class="header-logo">ED</div>
-<div class="header-title">
-  <h1>Enzo Dialer Time Sheet</h1>
-  <p>Professional Time Tracking Solution</p>
-</div>
-<div class="header-buttons">
-  <button class="login-btn" id="loginBtn" onclick="showLoginModal()">🔑 Login/Register</button>
-  <button class="color-customize-btn" onclick="showColorPicker()">🎨 Customize Color</button>
-  <button class="theme-toggle" onclick="toggleTheme()">🌙 Dark Mode</button>
-</div>
-</div>
-
-<div class="settings-bar">
-<div class="input-group">
-  <label>Employee Name</label>
-  <input type="text" id="employeeName" value="Enzo" placeholder="Enter name">
-</div>
-<div class="input-group">
-  <label>Employee Role</label>
-  <input type="text" id="employeeRole" value="Employee" placeholder="Enter role">
-</div>
-<div class="input-group">
-  <label>Hourly Rate (USD)</label>
-  <input type="number" id="hourlyRate" value="0" step="0.01" min="0">
-</div>
-<div class="input-group">
-  <label>Bonus (USD)</label>
-  <input type="number" id="bonus" value="0" step="0.01" min="0">
-</div>
-<div class="input-group">
-  <label>Payment Options</label>
-  <div style="display: flex; align-items: center; gap: 12px; margin-top: 8px;">
-    <label style="display: flex; align-items: center; gap: 6px; font-weight: normal; cursor: pointer;">
-      <input type="checkbox" id="includeBreaks" onchange="updateTotals()" style="width: auto;">
-      Include breaks in payment
-    </label>
-  </div>
-</div>
-</div>
-
-<div class="main-content">
-<div class="table-container">
-  <table id="timeSheet">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Day Off</th>
-        <th>Work Hours</th>
-        <th>Break Hours</th>
-        <th>Total Hours</th>
-        <th>Amount</th>
-        <th>Action</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-</div>
-
-<div class="summary-section">
-  <div class="summary-grid">
-    <div class="summary-item">
-      <h3>Total Working Hours</h3>
-      <div class="value" id="totalWorkingHours">0.00</div>
+    <div class="container">
+        <!-- Login Section -->
+        <div id="loginSection">
+            <div class="login-container">
+                <div class="logo">EnzoPay</div>
+                <h1 class="app-name">Payroll Management System</h1>
+                <p class="tagline">Professional Time Tracking & Payment Solution</p>
+                <div class="card">
+                    <h2 class="card-title">Login</h2>
+                    <p style="margin-bottom: 20px; color: var(--gray);">Accounts inactive for 6 months will be deleted.</p>
+                    <form id="loginForm">
+                        <div class="form-group">
+                            <input type="email" id="email" class="form-control" placeholder="Email" required>
+                        </div>
+                        <div class="form-group">
+                            <input type="password" id="password" class="form-control" placeholder="Password" required>
+                        </div>
+                        <button type="submit" class="btn" style="width: 100%;">Login</button>
+                    </form>
+                </div>
+                <p style="margin-top: 20px; color: var(--gray);">
+                    Admin: admin@enzopay.com / 741852<br>
+                    User: user@enzopay.com / 123456
+                </p>
+            </div>
+        </div>
+        <!-- User Interface -->
+        <div id="userInterface" class="hidden">
+            <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                <div>
+                    <h1 class="app-name">EnzoPay</h1>
+                    <p style="color: var(--gray);">Professional Time Tracking Solution</p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="toggleDarkMode" class="btn btn-outline">
+                        <i class="fas fa-moon"></i> Dark Mode
+                    </button>
+                    <button onclick="showColorPicker()" class="btn btn-outline">
+                        <i class="fas fa-palette"></i> Customize Color
+                    </button>
+                    <button id="logout" class="btn btn-outline">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </header>
+            <div class="grid">
+                <div class="stat-card">
+                    <h3>Pending Payslips</h3>
+                    <div class="value" id="userPendingPayslips">0</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, var(--success), var(--info));">
+                    <h3>Paid Payslips</h3>
+                    <div class="value" id="userPaidPayslips">0</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, var(--warning), var(--danger));">
+                    <h3>Total Earned</h3>
+                    <div class="value" id="userTotalEarned">$0.00</div>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">User Details</h2>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                    <div class="form-group">
+                        <label class="form-label">Employee Name</label>
+                        <input type="text" id="employeeName" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Employee Role</label>
+                        <input type="text" id="employeeRole" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Hourly Rate (USD)</label>
+                        <input type="number" id="hourlyRate" class="form-control" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bonus (USD)</label>
+                        <input type="number" id="bonus" class="form-control" step="0.01">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="includeBreaks"> Include breaks in payment
+                    </label>
+                </div>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Timesheet</h2>
+                    <div>
+                        <button id="addDay" class="btn btn-sm">
+                            <i class="fas fa-plus"></i> Add Day
+                        </button>
+                        <button id="addWeek" class="btn btn-sm">
+                            <i class="fas fa-calendar-plus"></i> Add Week
+                        </button>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Day Off</th>
+                                <th>Work Hours</th>
+                                <th>Break Hours</th>
+                                <th>Total Hours</th>
+                                <th>Amount</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="timesheetBody"></tbody>
+                    </table>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px;">
+                    <div>
+                        <strong>Total Working Hours:</strong> <span id="totalWorkingHours">0.00</span>
+                    </div>
+                    <div>
+                        <strong>Total Break Hours:</strong> <span id="totalBreakHours">0.00</span>
+                    </div>
+                    <div>
+                        <strong>Total Hours:</strong> <span id="totalHours">0.00</span>
+                    </div>
+                    <div>
+                        <strong>Base Pay:</strong> <span id="basePay">$0.00</span>
+                    </div>
+                    <div>
+                        <strong>Grand Total:</strong> <span id="grandTotal">$0.00</span>
+                    </div>
+                </div>
+            </div>
+            <div class="action-buttons">
+                <button id="submitPayslip" class="btn btn-success">
+                    <i class="fas fa-paper-plane"></i> Submit Payslip
+                </button>
+                <button id="saveHistory" class="btn btn-info">
+                    <i class="fas fa-save"></i> Save History
+                </button>
+                <button id="exportPdf" class="btn btn-danger">
+                    <i class="fas fa-file-pdf"></i> Export PDF
+                </button>
+                <button id="exportCsv" class="btn">
+                    <i class="fas fa-file-csv"></i> Export CSV
+                </button>
+                <button id="exportXlsx" class="btn btn-info">
+                    <i class="fas fa-file-excel"></i> Export XLSX
+                </button>
+                <button id="exportJson" class="btn btn-warning">
+                    <i class="fas fa-file-code"></i> Export JSON
+                </button>
+                <button id="importJson" class="btn btn-outline">
+                    <i class="fas fa-file-import"></i> Import JSON
+                </button>
+                <input type="file" id="importJsonFile" accept=".json" class="hidden">
+                <input type="file" id="uploadInsightful" accept=".csv" class="hidden">
+                <button onclick="document.getElementById('uploadInsightful').click()" class="btn btn-outline">
+                    <i class="fas fa-upload"></i> Upload Insightful Data
+                </button>
+                <button id="exportToDrive" class="btn btn-outline">
+                    <i class="fas fa-cloud-upload-alt"></i> Export to Drive
+                </button>
+                <button id="importFromDrive" class="btn btn-outline">
+                    <i class="fas fa-cloud-download-alt"></i> Import from Drive
+                </button>
+                <button id="clearAll" class="btn btn-outline">
+                    <i class="fas fa-trash"></i> Clear All
+                </button>
+            </div>
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">Payment History</h2>
+                </div>
+                <div id="paymentHistory"></div>
+            </div>
+            <div class="footer">
+                <p>EnzoPay Time Sheet © 2025</p>
+                <p>Last Updated: <span id="lastUpdated">Not yet saved</span></p>
+                <p>Contact: support@enzopay.com | Company: Enzo Dialer</p>
+            </div>
+        </div>
+        <!-- Admin Panel -->
+        <div id="adminPanel" class="hidden">
+            <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px;">
+                <div>
+                    <h1 class="app-name">EnzoPay Admin</h1>
+                    <p style="color: var(--gray);">Administrative Payroll Management</p>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button id="toggleDarkModeAdmin" class="btn btn-outline">
+                        <i class="fas fa-moon"></i> Dark Mode
+                    </button>
+                    <button onclick="showColorPicker()" class="btn btn-outline">
+                        <i class="fas fa-palette"></i> Customize Color
+                    </button>
+                    <button id="adminLogout" class="btn btn-outline">
+                        <i class="fas fa-sign-out-alt"></i> Logout
+                    </button>
+                </div>
+            </header>
+            <div class="grid">
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <div class="value" id="totalEmployees">0</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, var(--warning), var(--danger));">
+                    <h3>Payslips to Review</h3>
+                    <div class="value" id="pendingPayslips">0</div>
+                </div>
+                <div class="stat-card" style="background: linear-gradient(135deg, var(--success), var(--info));">
+                    <h3>Paid Payslips</h3>
+                    <div class="value" id="totalPayroll">0</div>
+                </div>
+            </div>
+            <div class="nav-tabs">
+                <div class="nav-tab active" data-tab="users">Manage Users</div>
+                <div class="nav-tab" data-tab="pending">Pending Payslips</div>
+                <div class="nav-tab" data-tab="paid">Paid Payslips</div>
+            </div>
+            <div class="tab-content active" id="usersTab">
+                <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Recent Activity</h2>
+        </div>
+        <ul id="recentActivity"></ul>
     </div>
-    <div class="summary-item">
-      <h3>Total Break Hours</h3>
-      <div class="value" id="totalBreakHours">0.00</div>
+                <div class="card">
+                    <div class="card-header">
+                        
+                        <h2 class="card-title">Add New User</h2>
+                    </div>
+                    <form id="addUserForm">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px;">
+                            <div class="form-group">
+                                <label class="form-label">Email</label>
+                                <input type="email" id="newEmail" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Password</label>
+                                <input type="password" id="newPassword" class="form-control" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Employee Name</label>
+                                <input type="text" id="newEmployeeName" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Employee Role</label>
+                                <input type="text" id="newEmployeeRole" class="form-control">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Hourly Rate</label>
+                                <input type="number" id="newHourlyRate" class="form-control" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Bonus</label>
+                                <input type="number" id="newBonus" class="form-control" step="0.01">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn" style="margin-top: 20px;">
+                            <i class="fas fa-user-plus"></i> Add User
+                        </button>
+                    </form>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">User List</h2>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Email</th>
+                                    <th>Employee Name</th>
+                                    <th>Role</th>
+                                    <th>Hourly Rate</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userList"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-content" id="pendingTab">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Pending Payslips</h2>
+                        <div>
+                            <button id="exportPendingPdf" class="btn btn-sm btn-danger">
+                                <i class="fas fa-file-pdf"></i> Export PDF
+                            </button>
+                            <button id="exportPendingCsv" class="btn btn-sm">
+                                <i class="fas fa-file-csv"></i> Export CSV
+                            </button>
+                            <button id="exportPendingJson" class="btn btn-sm btn-warning">
+                                <i class="fas fa-file-code"></i> Export JSON
+                            </button>
+                        </div>
+                    </div>
+                    <div id="pendingList"></div>
+                </div>
+            </div>
+            <div class="tab-content" id="paidTab">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Paid Payslips</h2>
+                        <div>
+                            <button id="exportPaidPdf" class="btn btn-sm btn-danger">
+                                <i class="fas fa-file-pdf"></i> Export PDF
+                            </button>
+                            <button id="exportPaidCsv" class="btn btn-sm">
+                                <i class="fas fa-file-csv"></i> Export CSV
+                            </button>
+                            <button id="exportPaidJson" class="btn btn-sm btn-warning">
+                                <i class="fas fa-file-code"></i> Export JSON
+                            </button>
+                        </div>
+                    </div>
+                    <div id="paidList"></div>
+                </div>
+            </div>
+        </div>
+        <!-- Details Modal -->
+        <div id="detailsModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h2 class="card-title">Payslip Details</h2>
+                <div id="detailsContent"></div>
+            </div>
+        </div>
+        <!-- Confirm Action Modal -->
+        <div id="confirmModal" class="modal">
+            <div class="modal-content">
+                <h2 class="card-title">Confirm Action</h2>
+                <p id="confirmMessage"></p>
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button id="confirmAction" class="btn btn-danger">Confirm</button>
+                    <button id="cancelAction" class="btn btn-outline">Cancel</button>
+                </div>
+            </div>
+        </div>
+        <!-- Color Picker Modal -->
+        <div id="colorPickerModal" class="color-picker-modal">
+            <div class="color-picker-box">
+                <h3>Customize Theme Color</h3>
+                <p>Choose a primary color for the application</p>
+                <input type="color" id="colorPicker" value="#4361ee">
+                <button class="btn btn-success" onclick="applyCustomColor()">Apply</button>
+                <button class="btn btn-outline" onclick="closeColorPicker()">Cancel</button>
+            </div>
+        </div>
+        <!-- Loading Overlay -->
+        <div id="loadingOverlay" class="loading-overlay">
+            <div class="loader"></div>
+        </div>
+        <!-- Toast Notification -->
+        <div id="toast" class="toast"></div>
     </div>
-    <div class="summary-item">
-      <h3>Total Hours</h3>
-      <div class="value" id="totalHours">0.00</div>
-    </div>
-    <div class="summary-item">
-      <h3>Base Pay</h3>
-      <div class="value" id="basePay">$0.00</div>
-    </div>
-  </div>
-  <div class="grand-total">
-    <h2>Grand Total: $<span id="totalValue">0.00</span></h2>
-  </div>
-</div>
-
-<div class="controls">
-  <div class="control-group">
-    <input type="date" id="selectedDate" value="">
-    <button class="btn btn-primary" onclick="addDay()">📅 Add Day</button>
-  </div>
-  <div class="control-group">
-    <input type="date" id="weekStartDate" value="">
-    <button class="btn btn-primary" onclick="addWeek()">📆 Add Week</button>
-  </div>
-  <button class="btn btn-success" onclick="saveHistory()">💾 Save History</button>
-  <button class="btn btn-warning" onclick="downloadPDF()">📄 Export PDF</button>
-  <button class="btn btn-info" onclick="downloadCSV()">📊 Export CSV</button>
-  <button class="btn btn-info" onclick="downloadXLSX()">📈 Export XLSX</button>
-  <button class="btn btn-info" onclick="emailData()">📧 Email Report</button>
-  <button class="btn btn-info" onclick="exportJSON()">🖴 Export JSON</button>
-  <button class="btn btn-info" onclick="document.getElementById('importJSONFile').click()">⬆ Import JSON</button>
-  <input type="file" id="importJSONFile" style="display:none" accept=".json" onchange="importJSON(this.files[0])">
-  <button class="btn btn-info" onclick="exportToDrive()">Export to Drive</button>
-  <button class="btn btn-info" onclick="importFromDrive()">Import from Drive</button>
-  <button class="btn btn-info" onclick="document.getElementById('insightfulFile').click()">Upload Insightful Data</button>
-  <input type="file" id="insightfulFile" style="display:none" accept=".xlsx,.xls,.csv" onchange="processInsightfulFile(this.files[0])">
-  <button class="btn btn-warning" onclick="showConfirmDialog('clearAll', 'Are you sure you want to clear all entries? This cannot be undone.')">🗑️ Clear All</button>
-  <button class="btn btn-warning" id="logoutBtn" onclick="logout()" style="display: none;">🚪 Logout</button>
-</div>
-
-<div class="history-section">
-  <h2>📋 Payment History</h2>
-  <div id="history" class="history-list"></div>
-</div>
-</div>
-
-<div class="footer">
-<p>Enzo Dialer Time Sheet &copy; 2025</p>
-<p>Last Updated: <span id="lastUpdated">Not yet saved</span></p>
-<p>Contact: support@enzodialer.com | Company: Enzo Dialer</p>
-</div>
-</div>
-
-
-<script type="module">
-  import { registerUser, loginUser, logoutUser, initSupabase } from './js/database.js';
-  window.register = async () => {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const employeeName = document.getElementById('employee-name').value;
-    const employeeRole = document.getElementById('employee-role').value;
-    const hourlyRate = document.getElementById('hourly-rate').value;
-    const bonus = document.getElementById('bonus').value;
-    await registerUser(email, password, employeeName, employeeRole, hourlyRate, bonus);
-  };
-  window.login = async () => {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    await loginUser(email, password);
-  };
-  window.logout = async () => {
-    await logoutUser();
-  };
-  initSupabase();
-</script>
-
-<script src="js/init.js"></script>
-<script src="js/auth.js"></script>
-<script src="js/theme.js"></script>
-<script src="js/timesheet.js"></script>
-<script src="js/export.js"></script>
-<script src="js/drive.js"></script>
-<script src="js/database.js" type="module"></script>
 </body>
 </html>

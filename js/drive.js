@@ -1,11 +1,5 @@
 // Google Drive Integration Setup
-// Replace with your own credentials from Google Cloud Console
-// 1. Create a project in https://console.cloud.google.com
-// 2. Enable Drive API
-// 3. Create OAuth Client ID (Web application)
-// 4. Add authorized JavaScript origins (e.g., http://localhost)
-// 5. Get Client ID and API Key
-// 6. For Picker, get App ID (Project Number)
+// Credentials from Google Cloud Console
 const clientId = '436453721202-5sla62q3831mivqsg8fi3d2ikkfn9rk2.apps.googleusercontent.com';
 const apiKey = 'AIzaSyAay2U_9KPZje3lb2zZ34RBaHrnzCsx1wY';
 const appId = '436453721202'; // For Google Picker
@@ -66,6 +60,21 @@ function initializeGapiClient() {
     discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
   }).then(() => {
     console.log('Google API client initialized successfully');
+    // Attach event listeners after initialization
+    const exportToDriveButton = document.getElementById('exportToDrive');
+    if (exportToDriveButton) {
+      exportToDriveButton.addEventListener('click', exportToDrive);
+      console.log('Export to Drive button listener attached');
+    } else {
+      console.error('Export to Drive button not found');
+    }
+    const importFromDriveButton = document.getElementById('importFromDrive');
+    if (importFromDriveButton) {
+      importFromDriveButton.addEventListener('click', importFromDrive);
+      console.log('Import from Drive button listener attached');
+    } else {
+      console.error('Import from Drive button not found');
+    }
   }).catch((err) => {
     console.error('Error initializing Google API client:', err);
     showToast('Failed to initialize Google API client.');
@@ -75,7 +84,6 @@ function initializeGapiClient() {
 // Request OAuth access token
 function requestAccessToken(callback) {
   if (accessToken) {
-    // Verify token validity with a test request
     fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
       headers: { 'Authorization': 'Bearer ' + accessToken }
     }).then(res => {
@@ -120,32 +128,34 @@ function requestNewToken(callback) {
 }
 
 // Export data to Google Drive
-function exportToDrive() {
+async function exportToDrive() {
   showLoading();
   if (!currentUser) {
     hideLoading();
     showToast('Please login to export data.');
+    console.warn('No current user for export');
     return;
   }
 
-  // Validate data before upload
-  if (!users[currentUser]?.data) {
+  const payslipData = getPayslipData();
+  if (!payslipData.days || payslipData.days.length === 0) {
     hideLoading();
-    showToast('No data available to export.');
+    showToast('No timesheet data to export.');
+    console.warn('No payslip data available for export');
     return;
   }
 
   let data;
   try {
-    data = JSON.stringify(users[currentUser].data, null, 2);
+    data = JSON.stringify(payslipData, null, 2);
   } catch (err) {
-    console.error('Error serializing data:', err);
+    console.error('Error serializing payslip data:', err);
     hideLoading();
     showToast('Error preparing data for export.');
     return;
   }
 
-  const filename = `${currentUser}_timesheet.json`;
+  const filename = `EnzoPay_Timesheet_${new Date().toISOString().split('T')[0]}.json`;
   const mimeType = 'application/json';
 
   requestAccessToken(() => {
@@ -187,14 +197,14 @@ function exportToDrive() {
 }
 
 // Import data from Google Drive using Picker
-function importFromDrive() {
+async function importFromDrive() {
   showLoading();
   if (!currentUser) {
     hideLoading();
     showToast('Please login to import data.');
+    console.warn('No current user for import');
     return;
   }
-  // Ensure gapi is loaded before attempting Picker
   if (typeof gapi === 'undefined') {
     console.warn('gapi not available, attempting to reload');
     reloadGapiScript(() => {
@@ -219,7 +229,7 @@ function loadPicker() {
         }
         try {
           const view = new google.picker.View(google.picker.ViewId.DOCS);
-          view.setMimeTypes('application/json,text/plain');
+          view.setMimeTypes('application/json');
           console.log('Initializing Google Picker with token:', accessToken);
           const picker = new google.picker.PickerBuilder()
             .setAppId(appId)
@@ -246,42 +256,51 @@ function loadPicker() {
 }
 
 // Handle Picker callback
-function pickerCallback(data) {
+async function pickerCallback(data) {
   console.log('Picker callback data:', data);
   if (data.action === google.picker.Action.PICKED) {
     showLoading();
     const fileId = data.docs[0].id;
     const fileName = data.docs[0].name;
     console.log('Selected file:', { id: fileId, name: fileName });
-    fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-      headers: { 'Authorization': 'Bearer ' + accessToken }
-    }).then(res => {
+    try {
+      const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { 'Authorization': 'Bearer ' + accessToken }
+      });
       if (!res.ok) {
-        return res.json().then(err => {
-          throw new Error(`HTTP ${res.status}: ${JSON.stringify(err)}`);
-        });
+        const err = await res.json();
+        throw new Error(`HTTP ${res.status}: ${JSON.stringify(err)}`);
       }
-      return res.text();
-    }).then(content => {
-      try {
-        const importedData = JSON.parse(content);
-        users[currentUser].data = importedData;
-        saveUsers();
-        loadUserData();
+      const content = await res.text();
+      const importedData = JSON.parse(content);
+      if (!importedData.days || !Array.isArray(importedData.days) || !importedData.days.every(day => day && day.date)) {
+        console.warn('Invalid timesheet data format:', importedData);
+        showToast('Invalid timesheet data format.');
         hideLoading();
-        showToast(`Imported "${fileName}" from Google Drive!`);
-      } catch (err) {
-        console.error('Error parsing JSON:', err);
-        hideLoading();
-        showToast('Invalid JSON file from Drive.');
+        return;
       }
-    }).catch(err => {
+      document.getElementById('timesheetBody').innerHTML = '';
+      importedData.days.forEach(day => {
+        addDay(day.date, day.workHours || 0, day.breakHours || 0, day.dayOff || false);
+      });
+      document.getElementById('employeeName').value = importedData.employeeName || '';
+      document.getElementById('employeeRole').value = importedData.employeeRole || '';
+      document.getElementById('hourlyRate').value = importedData.hourlyRate || 0;
+      document.getElementById('bonus').value = importedData.bonus || 0;
+      document.getElementById('includeBreaks').checked = importedData.includeBreaks || false;
+      updateRowAndTotals();
+      await saveUserData();
+      hideLoading();
+      showToast(`Imported "${fileName}" from Google Drive!`);
+      console.log('Imported data:', importedData);
+    } catch (err) {
       console.error('Error importing from Drive:', err);
       hideLoading();
       showToast(`Error importing from Drive: ${err.message}`);
-    });
+    }
   } else if (data.action === google.picker.Action.CANCEL) {
     console.log('Picker cancelled by user');
     showToast('File selection cancelled.');
+    hideLoading();
   }
 }
