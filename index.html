@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <meta http-equiv="Content-Security-Policy" content="
-        script-src 'self' https://apis.google.com https://accounts.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval' blob: data:;
-        connect-src 'self' https://xsnvjpbhbxxnpqxlnxyz.supabase.co https://www.googleapis.com https://content.googleapis.com;
-        frame-src https://accounts.google.com https://content.googleapis.com;
-    ">
+    script-src 'self' https://apis.google.com https://accounts.google.com https://www.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com 'unsafe-inline' 'unsafe-eval' blob: data:;
+    connect-src 'self' https://xsnvjpbhbxxnpqxlnxyz.supabase.co https://www.googleapis.com https://content.googleapis.com https://docs.google.com https://*.googleapis.com;
+    frame-src  https://accounts.google.com https://content.googleapis.com https://docs.google.com https://*.google.com;
+
+">
     <title>EnzoPay - Professional Payroll Management</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -47,8 +49,8 @@
                     </form>
                 </div>
                 <p style="margin-top: 20px; color: var(--gray);">
-                    Don't have an account or forget your password? 
-                    Call Enzo admin
+                    Admin: admin@enzopay.com / 741852<br>
+                    User: user@enzopay.com / 123456
                 </p>
             </div>
         </div>
@@ -386,5 +388,4 @@
         <div id="toast" class="toast"></div>
     </div>
 </body>
-
 </html>

@@ -128,13 +128,14 @@ function updateLastUpdated() {
     document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
 }
 
-function addDay(dateStr = "", workHours = 0, breakHours = 1, isDayOff = false) {
+function addDay( workHours = 0, breakHours = 1, isDayOff = false) {
     const tbody = document.getElementById('timesheetBody');
     const tr = document.createElement('tr');
     const today = new Date().toISOString().split('T')[0];
-    const date = dateStr || today;
+    
+    //const date = today;
     tr.innerHTML = `
-        <td><input type="date" class="form-control date" value="${date}"></td>
+        <td><input type="date" class="form-control date" value="${today}"></td>
         <td><input type="checkbox" class="dayOff" ${isDayOff ? 'checked' : ''}></td>
         <td><input type="number" class="form-control workHours" step="0.01" value="${workHours}" ${isDayOff ? 'disabled' : ''}></td>
         <td><input type="number" class="form-control breakHours" step="0.01" value="${breakHours}" ${isDayOff ? 'disabled' : ''}></td>
