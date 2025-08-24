@@ -312,70 +312,236 @@ function handleUploadInsightful(e) {
         return;
     }
 
-    const reader = new FileReader();
-    reader.onload = function(event) {
-        try {
-            const csv = event.target.result;
-            const lines = csv.split('\n');
+    try {
+        showLoading();
+        const ext = (file.name.split('.').pop() || '').toLowerCase();
+        const reader = new FileReader();
 
-            // Clear existing rows
-            document.getElementById('timesheetBody').innerHTML = '';
+        reader.onload = function(event) {
+            try {
+                if (!window.XLSX) {
+                    throw new Error('Spreadsheet library failed to load.');
+                }
 
-            // Look for Employee Name, Date and Work Time [h] columns
-            let employeeNameIndex = -1;
-            let dateIndex = -1;
-            let workTimeIndex = -1;
+                let workbook;
+                if (ext === 'csv') {
+                    const text = typeof event.target.result === 'string' ? event.target.result : new TextDecoder().decode(event.target.result);
+                    workbook = XLSX.read(text, { type: 'string' });
+                } else {
+                    const data = new Uint8Array(event.target.result);
+                    workbook = XLSX.read(data, { type: 'array' });
+                }
 
-            // Check header row
-            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-            employeeNameIndex = headers.indexOf('employee name');
-            dateIndex = headers.indexOf('date');
-            workTimeIndex = headers.indexOf('work time [h]');
+                const firstSheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[firstSheetName];
+                const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' });
 
-            if (dateIndex === -1 || workTimeIndex === -1) {
-                showToast('CSV must contain "Date" and "Work Time [h]" columns');
-                return;
-            }
+                if (!rows || rows.length === 0) {
+                    showToast('The selected file is empty.');
+                    return;
+                }
 
-            // Extract employee name if available
-            if (employeeNameIndex !== -1 && lines.length > 1) {
-                const firstDataRow = lines[1].split(',');
-                if (firstDataRow.length > employeeNameIndex) {
-                    const employeeName = firstDataRow[employeeNameIndex].trim();
-                    if (employeeName) {
-                        document.getElementById('employeeName').value = employeeName;
+                // Find header row and detect columns
+                let headerRowIndex = 0;
+                let header = rows[0].map(v => normalizeHeader(v));
+                let cols = detectInsightfulColumns(header);
+                for (let r = 1; (cols.dateIndex === -1 || cols.workIndex === -1) && r < Math.min(rows.length, 10); r++) {
+                    const probe = rows[r].map(v => normalizeHeader(v));
+                    const probeCols = detectInsightfulColumns(probe);
+                    if (probeCols.dateIndex !== -1 && probeCols.workIndex !== -1) {
+                        headerRowIndex = r;
+                        header = probe;
+                        cols = probeCols;
+                        break;
                     }
                 }
-            }
 
-            // Process data rows
-            for (let i = 1; i < lines.length; i++) {
-                if (!lines[i].trim()) continue;
-
-                const cells = lines[i].split(',');
-                if (cells.length <= Math.max(dateIndex, workTimeIndex)) continue;
-
-                const date = cells[dateIndex].trim();
-                const workTime = parseFloat(cells[workTimeIndex].trim()) || 0;
-
-                if (!date) continue;
-
-                addDay();
-                const lastRow = document.querySelector('#timesheetBody tr:last-child');
-                if (lastRow) {
-                    lastRow.querySelector('.date').value = date;
-                    lastRow.querySelector('.workHours').value = workTime;
-                    lastRow.querySelector('.breakHours').value = 1.00; // Set break hours to 1 as default
+                if (cols.dateIndex === -1 || cols.workIndex === -1) {
+                    showToast('Could not find Date and Work Hours columns.');
+                    return;
                 }
-            }
 
-            updateRowAndTotals();
-            showToast('Insightful data uploaded successfully!');
-        } catch (error) {
-            showToast('Error processing Insightful CSV: ' + error.message);
-        }
-    };
-    reader.readAsText(file);
+                const tbody = document.getElementById('timesheetBody');
+                if (!tbody) {
+                    showToast('Timesheet table not found.');
+                    return;
+                }
+
+                // Map existing rows by date
+                const existingByDate = new Map();
+                tbody.querySelectorAll('tr').forEach(tr => {
+                    const d = tr.querySelector('.date')?.value;
+                    if (d) existingByDate.set(d, tr);
+                });
+
+                // Set employee name if present
+                if (cols.employeeIndex !== -1) {
+                    for (let r = headerRowIndex + 1; r < rows.length; r++) {
+                        const val = rows[r]?.[cols.employeeIndex];
+                        if (val && String(val).trim()) {
+                            document.getElementById('employeeName').value = String(val).trim();
+                            break;
+                        }
+                    }
+                }
+
+                let parsed = 0, created = 0, updated = 0;
+
+                for (let r = headerRowIndex + 1; r < rows.length; r++) {
+                    const row = rows[r];
+                    if (!row || row.length === 0) continue;
+
+                    const rawDate = row[cols.dateIndex];
+                    const rawWork = row[cols.workIndex];
+                    if ((rawDate === '' || rawDate == null) && (rawWork === '' || rawWork == null)) continue;
+
+                    const isoDate = parseToISODate(rawDate);
+                    if (!isoDate) continue;
+
+                    const isDayOff = cols.dayOffIndex !== -1 ? toBoolean(row[cols.dayOffIndex]) : false;
+                    let workHours = isDayOff ? 0 : parseToHours(rawWork);
+                    let breakHours = 0;
+                    if (!isDayOff && cols.breakIndex !== -1) {
+                        breakHours = parseToHours(row[cols.breakIndex]);
+                    } else if (!isDayOff) {
+                        breakHours = 1; // default
+                    }
+
+                    if (isNaN(workHours)) workHours = 0;
+                    if (isNaN(breakHours)) breakHours = 0;
+
+                    parsed++;
+
+                    let tr = existingByDate.get(isoDate);
+                    if (!tr) {
+                        addDay();
+                        tr = document.querySelector('#timesheetBody tr:last-child');
+                        created++;
+                    } else {
+                        updated++;
+                    }
+
+                    if (tr) {
+                        const dateEl = tr.querySelector('.date');
+                        const dayOffEl = tr.querySelector('.dayOff');
+                        const workEl = tr.querySelector('.workHours');
+                        const breakEl = tr.querySelector('.breakHours');
+                        if (dateEl) dateEl.value = isoDate;
+                        if (dayOffEl) dayOffEl.checked = !!isDayOff;
+                        if (workEl) {
+                            workEl.disabled = !!isDayOff;
+                            workEl.value = Number(workHours).toFixed(2);
+                        }
+                        if (breakEl) {
+                            breakEl.disabled = !!isDayOff;
+                            breakEl.value = Number(breakHours).toFixed(2);
+                        }
+                        existingByDate.set(isoDate, tr);
+                    }
+                }
+
+                updateRowAndTotals();
+                saveUserData();
+                showToast(`Insightful data uploaded: ${parsed} rows (${created} new, ${updated} updated).`);
+            } catch (err) {
+                console.error('Insightful upload failed:', err);
+                showToast('Error processing file: ' + err.message);
+            } finally {
+                hideLoading();
+                e.target.value = '';
+            }
+        };
+
+        if (ext === 'csv') reader.readAsText(file);
+        else reader.readAsArrayBuffer(file);
+    } catch (err) {
+        console.error('Upload init failed:', err);
+        hideLoading();
+        showToast('Failed to read file: ' + err.message);
+    }
+}
+
+// Helpers for Insightful import
+function normalizeHeader(v) {
+    return String(v || '').toLowerCase().replace(/\s+/g, ' ').replace(/[._-]+/g, ' ').trim();
+}
+
+function detectInsightfulColumns(headerCells) {
+    const join = (s) => s.join('|');
+    const dateCandidates = new RegExp(join(['date','work date','day']));
+    const workCandidates = new RegExp(join(['work time [h]','work time','work hours','worked hours','hours','time']));
+    const breakCandidates = new RegExp(join(['break time [h]','break time','break hours','break']));
+    const employeeCandidates = new RegExp(join(['employee name','employee','name','agent','user']));
+    const dayOffCandidates = new RegExp(join(['day off','off','holiday','vacation']));
+
+    let dateIndex = -1, workIndex = -1, breakIndex = -1, employeeIndex = -1, dayOffIndex = -1;
+    headerCells.forEach((h, idx) => {
+        if (dateIndex === -1 && dateCandidates.test(h)) dateIndex = idx;
+        else if (workIndex === -1 && workCandidates.test(h)) workIndex = idx;
+        else if (breakIndex === -1 && breakCandidates.test(h)) breakIndex = idx;
+        else if (employeeIndex === -1 && employeeCandidates.test(h)) employeeIndex = idx;
+        else if (dayOffIndex === -1 && dayOffCandidates.test(h)) dayOffIndex = idx;
+    });
+    return { dateIndex, workIndex, breakIndex, employeeIndex, dayOffIndex };
+}
+
+function parseToISODate(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number') {
+        // Excel serial date
+        const millis = Math.round((value - 25569) * 86400 * 1000);
+        const d = new Date(millis);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+    const s = String(value).trim();
+    if (!s) return null;
+    // Try standard parse
+    const d1 = new Date(s);
+    if (!isNaN(d1.getTime())) return d1.toISOString().slice(0, 10);
+    // Try dd.mm.yyyy or dd/mm/yyyy
+    const m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+    if (m) {
+        const dd = parseInt(m[1], 10);
+        const mm = parseInt(m[2], 10) - 1;
+        const yyyy = parseInt(m[3].length === 2 ? ('20' + m[3]) : m[3], 10);
+        const d = new Date(yyyy, mm, dd);
+        if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    }
+    return null;
+}
+
+function parseToHours(value) {
+    if (value == null || value === '') return 0;
+    if (typeof value === 'number') {
+        // If <= 1, treat as fraction of a day; else as decimal hours
+        return value <= 1 ? value * 24 : value;
+    }
+    const s = String(value).trim();
+    if (!s) return 0;
+    // h:mm[:ss]
+    const hm = s.match(/^(\d{1,3}):(\d{2})(?::(\d{2}))?$/);
+    if (hm) {
+        const h = parseInt(hm[1], 10) || 0;
+        const m = parseInt(hm[2], 10) || 0;
+        const sec = parseInt(hm[3] || '0', 10) || 0;
+        return h + m / 60 + sec / 3600;
+    }
+    // 7h 30m or 7h or 30m
+    const hms = s.match(/(?:(\d+(?:[.,]\d+)?)\s*h)?\s*(?:(\d+(?:[.,]\d+)?)\s*m)?/i);
+    if (hms && (hms[1] || hms[2])) {
+        const h = parseFloat((hms[1] || '0').replace(',', '.')) || 0;
+        const m = parseFloat((hms[2] || '0').replace(',', '.')) || 0;
+        return h + m / 60;
+    }
+    // Decimal with comma or dot
+    const num = parseFloat(s.replace(',', '.'));
+    return isNaN(num) ? 0 : num;
+}
+
+function toBoolean(value) {
+    if (typeof value === 'boolean') return value;
+    const s = String(value || '').trim().toLowerCase();
+    return ['yes','true','1','y','day off','off','holiday'].includes(s);
 }
 
 async  function confirmClearAll() {
