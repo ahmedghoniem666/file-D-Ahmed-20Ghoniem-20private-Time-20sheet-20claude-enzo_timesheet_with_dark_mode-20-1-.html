@@ -1,3 +1,4 @@
+//init.js
 function initializeApp() {
     applyTheme();
     initGapi();
@@ -33,15 +34,11 @@ function initializeApp() {
     document.querySelectorAll('.nav-tab').forEach(tab => tab.addEventListener('click', switchTab));
     const addDayButton = document.getElementById('addDay');
     if (addDayButton) {
-        addDayButton.addEventListener('click', addDay);
+        addDayButton.addEventListener('click', () => addDay());
     }
     const addWeekButton = document.getElementById('addWeek');
     if (addWeekButton) {
         addWeekButton.addEventListener('click', addWeek);
-    }
-    const submitPayslipButton = document.getElementById('submitPayslip');
-    if (submitPayslipButton) {
-        submitPayslipButton.addEventListener('click', submitPayslip);
     }
     const saveHistoryButton = document.getElementById('saveHistory');
     if (saveHistoryButton) {
@@ -124,6 +121,21 @@ function initializeApp() {
         confirmActionButton.addEventListener('click', confirmAction);
     }
 
+    // Profile update listeners
+    const profileFields = ['employeeName', 'employeeRole', 'hourlyRate', 'bonus'];
+    profileFields.forEach(field => {
+        const elem = document.getElementById(field);
+        if (elem) elem.addEventListener('change', updateProfile);
+    });
+    
+    // Draft save on includeBreaks
+    const includeBreaks = document.getElementById('includeBreaks');
+    if (includeBreaks) {
+        includeBreaks.addEventListener('change', () => {
+            updateRowAndTotals();
+            saveDraft();
+        });
+    }
     
     // Load saved theme
     const savedColor = localStorage.getItem('enzo_timesheet_color');
@@ -133,24 +145,19 @@ function initializeApp() {
     }
 }
 
-// Add to your switchTab function
 function switchTab(e) {
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     e.target.classList.add('active');
     document.getElementById(`${e.target.dataset.tab}Tab`).classList.add('active');
     
-    // Load admin activity log when that tab is selected
     if (e.target.dataset.tab === 'activity') {
         renderAdminActivityLog();
     }
 }
 
 function confirmAction() {
-    // Placeholder function to be overridden by specific actions
     document.getElementById('confirmModal').style.display = 'none';
 }
 
-// Initialize on DOM load
 document.addEventListener('DOMContentLoaded', initializeApp);
-

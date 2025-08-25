@@ -1,70 +1,4 @@
-function initExportImportListeners() {
-    console.log('Initializing export/import listeners');
-    const exportPdfButton = document.getElementById('exportPdf');
-    const exportCsvButton = document.getElementById('exportCsv');
-    const exportXlsxButton = document.getElementById('exportXlsx');
-    const exportJsonButton = document.getElementById('exportJson');
-    const importJsonButton = document.getElementById('importJson');
-    const importJsonFile = document.getElementById('importJsonFile');
-    const exportPendingPdfButton = document.getElementById('exportPendingPdf');
-    const exportPendingCsvButton = document.getElementById('exportPendingCsv');
-    const exportPendingJsonButton = document.getElementById('exportPendingJson');
-    const exportPaidPdfButton = document.getElementById('exportPaidPdf');
-    const exportPaidCsvButton = document.getElementById('exportPaidCsv');
-    const exportPaidJsonButton = document.getElementById('exportPaidJson');
-    const uploadInsightfulButton = document.getElementById('uploadInsightful');
-
-    if (exportPdfButton) exportPdfButton.addEventListener('click', exportPdf);
-    else console.warn('Export PDF button not found');
-    if (exportCsvButton) exportCsvButton.addEventListener('click', exportCsv);
-    else console.warn('Export CSV button not found');
-    if (exportXlsxButton) exportXlsxButton.addEventListener('click', exportXlsx);
-    else console.warn('Export XLSX button not found');
-    if (exportJsonButton) exportJsonButton.addEventListener('click', exportJson);
-    else console.warn('Export JSON button not found');
-
-    if (importJsonButton) {
-        importJsonButton.addEventListener('click', () => {
-            console.log('Import JSON button clicked');
-            if (importJsonFile) {
-                importJsonFile.value = ''; // Reset input so change event always fires
-                importJsonFile.click();
-            } else {
-                console.error('Import JSON file input not found');
-                showToast('Import JSON input not found.');
-            }
-        });
-    } else {
-        console.warn('Import JSON button not found');
-    }
-
-    if (importJsonFile) {
-        importJsonFile.addEventListener('change', (event) => {
-            console.log('Import JSON file change event triggered');
-            handleImportJson(event);
-            // Reset input after handling to allow re-importing the same file
-            event.target.value = '';
-        });
-    } else {
-        console.warn('Import JSON file input not found');
-    }
-
-    if (exportPendingPdfButton) exportPendingPdfButton.addEventListener('click', () => exportAllPayslips('pdf', 'pending'));
-    else console.warn('Export Pending PDF button not found');
-    if (exportPendingCsvButton) exportPendingCsvButton.addEventListener('click', () => exportAllPayslips('csv', 'pending'));
-    else console.warn('Export Pending CSV button not found');
-    if (exportPendingJsonButton) exportPendingJsonButton.addEventListener('click', () => exportAllPayslips('json', 'pending'));
-    else console.warn('Export Pending JSON button not found');
-    if (exportPaidPdfButton) exportPaidPdfButton.addEventListener('click', () => exportAllPayslips('pdf', 'paid'));
-    else console.warn('Export Paid PDF button not found');
-    if (exportPaidCsvButton) exportPaidCsvButton.addEventListener('click', () => exportAllPayslips('csv', 'paid'));
-    else console.warn('Export Paid CSV button not found');
-    if (exportPaidJsonButton) exportPaidJsonButton.addEventListener('click', () => exportAllPayslips('json', 'paid'));
-    else console.warn('Export Paid JSON button not found');
-    if (uploadInsightfulButton) uploadInsightfulButton.addEventListener('change', handleUploadInsightful);
-    else console.warn('Upload Insightful input not found');
-}
-
+//export.js
 async function exportPdf() {
     if (!window.jspdf || !window.jspdf.jsPDF) {
         showToast('PDF library failed to load. Please refresh the page.');
@@ -214,7 +148,6 @@ function exportXlsx() {
             ws_data.push([employeeName, date, isDayOff, work, brk, total, amt]);
         });
 
-        // Add Grand Total row if you have a total value element
         const totalValueElem = document.getElementById("grandTotal");
         if (totalValueElem) {
             ws_data.push(['', '', '', '', '', 'Grand Total:', totalValueElem.innerText]);
@@ -282,7 +215,7 @@ async function handleImportJson(event) {
                 document.getElementById('bonus').value = data.bonus || 0;
                 document.getElementById('includeBreaks').checked = data.includeBreaks || false;
                 updateRowAndTotals();
-                await saveUserData();
+                saveDraft();
                 showToast('JSON imported successfully!');
                 console.log('JSON imported successfully:', data);
             } catch (err) {
@@ -318,15 +251,12 @@ function handleUploadInsightful(e) {
             const csv = event.target.result;
             const lines = csv.split('\n');
 
-            // Clear existing rows
             document.getElementById('timesheetBody').innerHTML = '';
 
-            // Look for Employee Name, Date and Work Time [h] columns
             let employeeNameIndex = -1;
             let dateIndex = -1;
             let workTimeIndex = -1;
 
-            // Check header row
             const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
             employeeNameIndex = headers.indexOf('employee name');
             dateIndex = headers.indexOf('date');
@@ -337,7 +267,6 @@ function handleUploadInsightful(e) {
                 return;
             }
 
-            // Extract employee name if available
             if (employeeNameIndex !== -1 && lines.length > 1) {
                 const firstDataRow = lines[1].split(',');
                 if (firstDataRow.length > employeeNameIndex) {
@@ -348,7 +277,6 @@ function handleUploadInsightful(e) {
                 }
             }
 
-            // Process data rows
             for (let i = 1; i < lines.length; i++) {
                 if (!lines[i].trim()) continue;
 
@@ -360,61 +288,41 @@ function handleUploadInsightful(e) {
 
                 if (!dateStr) continue;
 
-                // Parse date (handle formats like "18-Aug-25")
                 let dateObj;
                 const dateParts = dateStr.split('-');
                 if (dateParts.length === 3) {
                     const day = parseInt(dateParts[0]);
                     const monthStr = dateParts[1].toLowerCase();
                     let year = parseInt(dateParts[2]);
-                    
-                    // Handle 2-digit year
-                    if (year < 100) {
-                        year = 2000 + year;
-                    }
-                    
-                    const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 
-                                       'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+                    if (year < 100) year = 2000 + year;
+                    const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
                     const month = monthNames.findIndex(m => m === monthStr.substring(0, 3));
-                    
                     if (month !== -1) {
                         dateObj = new Date(year, month, day);
                     }
                 }
-                
-                // If parsing failed, try other methods
                 if (!dateObj || isNaN(dateObj.getTime())) {
                     dateObj = new Date(dateStr);
                 }
-                
                 if (!dateObj || isNaN(dateObj.getTime())) {
                     console.warn('Invalid date:', dateStr);
                     continue;
                 }
-                
                 const formattedDate = dateObj.toISOString().split('T')[0];
                 
-                // Parse work time (handle formats like "8:07" meaning 8 hours and 7 minutes)
                 let workHours = 0;
                 if (workTimeStr.includes(':')) {
-                    // Handle HH:MM format
                     const [hours, minutes] = workTimeStr.split(':').map(part => parseInt(part) || 0);
                     workHours = hours + (minutes / 60);
                 } else {
-                    // Handle decimal format
                     workHours = parseFloat(workTimeStr) || 0;
                 }
 
-                addDay();
-                const lastRow = document.querySelector('#timesheetBody tr:last-child');
-                if (lastRow) {
-                    lastRow.querySelector('.date').value = formattedDate;
-                    lastRow.querySelector('.workHours').value = workHours.toFixed(2);
-                    lastRow.querySelector('.breakHours').value = 1.00; // Set break hours to 1 as default
-                }
+                addDay(formattedDate, workHours, 1.00, false);
             }
 
             updateRowAndTotals();
+            saveDraft();
             showToast('Insightful data uploaded successfully!');
         } catch (error) {
             showToast('Error processing Insightful CSV: ' + error.message);
@@ -422,57 +330,190 @@ function handleUploadInsightful(e) {
     };
     reader.readAsText(file);
 }
-async  function confirmClearAll() {
-            document.getElementById('confirmMessage').textContent = 'Are you sure you want to clear all timesheet data? This action cannot be undone.';
-            confirmModal.style.display = 'flex';
-            
-            // Set up confirmation action
-            confirmActionBtn.onclick = function() {
-                document.getElementById('timesheetBody').innerHTML = '';
-                updateRowAndTotals();
-                confirmModal.style.display = 'none';
-            };
-        }
+
+function confirmClearAll() {
+    document.getElementById('confirmMessage').textContent = 'Are you sure you want to clear all timesheet data? This action cannot be undone.';
+    document.getElementById('confirmModal').style.display = 'flex';
+    
+    document.getElementById('confirmAction').onclick = function() {
+        document.getElementById('timesheetBody').innerHTML = '';
+        updateRowAndTotals();
+        saveDraft();
+        document.getElementById('confirmModal').style.display = 'none';
+    };
+}
 
 async function exportAllPayslips(format, type) {
     try {
         showLoading();
         
-        // Fetch payslips from Supabase
         const { data: payslips, error } = await supabase
             .from('payslips')
-            .select('id, employeename, payslip_data, submissiondate, payment_date, reference')
+            .select('*')
             .eq('status', type)
-            .order(type === 'paid' ? 'payment_date' : 'submissiondate', { ascending: false });
+            .order(type === 'paid' ? 'payment_date' : 'submission_date', { ascending: false });
 
         if (error) throw new Error(`Failed to fetch ${type} payslips: ${error.message}`);
         if (!payslips || payslips.length === 0) {
             showToast(`No ${type} payslips to export.`);
-            console.warn(`No ${type} payslips available for export`);
             return;
         }
 
+        const payslipIds = payslips.map(p => p.id);
+        const { data: allEntries } = await supabase
+            .from('payslip_entries')
+            .select('*')
+            .in('payslip_id', payslipIds);
+
+        const enrichedPayslips = payslips.map(p => ({
+            ...p,
+            days: allEntries.filter(e => e.payslip_id === p.id).map(e => ({
+                date: e.date,
+                dayOff: e.is_day_off,
+                workHours: e.work_hours,
+                breakHours: e.break_hours,
+                totalHours: e.total_hours,
+                amount: e.amount
+            })),
+            totals: {
+                workHours: allEntries.filter(e => e.payslip_id === p.id).reduce((sum, e) => sum + (e.work_hours || 0), 0),
+                breakHours: allEntries.filter(e => e.payslip_id === p.id).reduce((sum, e) => sum + (e.break_hours || 0), 0),
+                totalHours: allEntries.filter(e => e.payslip_id === p.id).reduce((sum, e) => sum + (e.total_hours || 0), 0),
+                basePay: allEntries.filter(e => e.payslip_id === p.id).reduce((sum, e) => sum + (e.amount || 0), 0),
+                grandTotal: allEntries.filter(e => e.payslip_id === p.id).reduce((sum, e) => sum + (e.amount || 0), 0) + (p.bonus || 0)
+            }
+        }));
+
         if (format === 'pdf') {
-            exportPdf();
-        } else if (format === 'csv') {
-            const rows = [['Payslip #', 'Employee', 'Role', 'Hourly Rate', 'Bonus', 'Include Breaks', 'Submission Date', 'Payment Date', 'Reference', 'Date', 'Day Off', 'Work Hours', 'Break Hours', 'Total Hours', 'Amount']];
-            payslips.forEach((payslip, index) => {
-                const data = payslip.payslip_data || {};
-                if (!data.days || !Array.isArray(data.days)) {
-                    console.warn(`Invalid payslip skipped (ID: ${payslip.id}):`, payslip);
-                    return;
+            if (!window.jspdf || !window.jspdf.jsPDF) {
+                showToast('PDF library failed to load. Please refresh the page.');
+                console.error('jsPDF not available');
+                return;
+            }
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            
+            // Title
+            doc.setFontSize(18);
+            doc.text(`EnzoPay ${type.charAt(0).toUpperCase() + type.slice(1)} Payslips`, 20, 20);
+            doc.setFontSize(12);
+            
+            let currentY = 30;
+            let pageNumber = 1;
+
+            enrichedPayslips.forEach((payslip, index) => {
+                // Add new page for each payslip after the first one
+                if (index > 0) {
+                    doc.addPage();
+                    pageNumber++;
+                    currentY = 20;
                 }
-                data.days.forEach(day => {
+
+                // Payslip header
+                doc.setFontSize(14);
+                doc.text(`Payslip #${payslip.id}`, 20, currentY);
+                currentY += 10;
+                
+                doc.setFontSize(12);
+                doc.text(`Employee: ${payslip.employee_name || 'Unknown'}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Role: ${payslip.employee_role || 'Unknown'}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Hourly Rate: $${(payslip.hourly_rate || 0).toFixed(2)}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Bonus: $${(payslip.bonus || 0).toFixed(2)}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Include Breaks: ${payslip.include_breaks ? 'Yes' : 'No'}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Submission Date: ${payslip.submission_date ? new Date(payslip.submission_date).toLocaleDateString() : 'N/A'}`, 20, currentY);
+                currentY += 8;
+                
+                if (type === 'paid') {
+                    doc.text(`Payment Date: ${payslip.payment_date ? new Date(payslip.payment_date).toLocaleDateString() : 'N/A'}`, 20, currentY);
+                    currentY += 8;
+                    doc.text(`Reference: ${payslip.reference || 'N/A'}`, 20, currentY);
+                    currentY += 8;
+                }
+
+                currentY += 5;
+
+                // Check if autoTable is available
+                if (window.jsPDF && typeof window.jsPDF.prototype.autoTable === 'function') {
+                    // Use autoTable for formatted table
+                    doc.autoTable({
+                        head: [['Date', 'Day Off', 'Work Hours', 'Break Hours', 'Total Hours', 'Amount']],
+                        body: payslip.days.map(day => [
+                            day.date || 'N/A',
+                            day.dayOff ? 'Yes' : 'No',
+                            (day.workHours || 0).toFixed(2),
+                            (day.breakHours || 0).toFixed(2),
+                            (day.totalHours || 0).toFixed(2),
+                            `$${(day.amount || 0).toFixed(2)}`
+                        ]),
+                        startY: currentY,
+                        theme: 'striped',
+                        headStyles: { fillColor: [22, 160, 133] }
+                    });
+                    currentY = doc.lastAutoTable.finalY + 10;
+                } else {
+                    // Fallback: List days as plain text
+                    console.warn('jspdf-autotable not available, using plain text fallback');
+                    doc.text('Time Entries:', 20, currentY);
+                    currentY += 8;
+                    payslip.days.forEach((day, dayIndex) => {
+                        if (currentY > 270) {
+                            doc.addPage();
+                            currentY = 20;
+                            pageNumber++;
+                        }
+                        doc.text(
+                            `${dayIndex + 1}. ${day.date || 'N/A'}: ${day.dayOff ? 'Day Off' : `${(day.workHours || 0).toFixed(2)} work hrs, ${(day.breakHours || 0).toFixed(2)} break hrs, ${(day.totalHours || 0).toFixed(2)} total hrs, $${(day.amount || 0).toFixed(2)}`}`,
+                            20,
+                            currentY
+                        );
+                        currentY += 8;
+                    });
+                    currentY += 10;
+                }
+
+                // Summary
+                doc.text(`Total Work Hours: ${(payslip.totals?.workHours || 0).toFixed(2)}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Total Break Hours: ${(payslip.totals?.breakHours || 0).toFixed(2)}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Total Hours: ${(payslip.totals?.totalHours || 0).toFixed(2)}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Base Pay: $${(payslip.totals?.basePay || 0).toFixed(2)}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Bonus: $${(payslip.bonus || 0).toFixed(2)}`, 20, currentY);
+                currentY += 8;
+                doc.text(`Grand Total: $${(payslip.totals?.grandTotal || 0).toFixed(2)}`, 20, currentY);
+                currentY += 15;
+
+                // Page footer
+                doc.setFontSize(10);
+                doc.text(`Page ${pageNumber}`, 180, 285, { align: 'right' });
+                doc.setFontSize(12);
+            });
+
+            doc.save(`EnzoPay_${type}_Payslips_${new Date().toISOString().split('T')[0]}.pdf`);
+            showToast(`${type} payslips exported as PDF successfully!`);
+
+        } else if (format === 'csv') {
+            const rows = [['Payslip ID', 'Employee', 'Role', 'Hourly Rate', 'Bonus', 'Include Breaks', 'Submission Date', 'Payment Date', 'Reference', 'Date', 'Day Off', 'Work Hours', 'Break Hours', 'Total Hours', 'Amount']];
+            enrichedPayslips.forEach((p, index) => {
+                p.days.forEach(day => {
                     rows.push([
-                        index + 1,
-                        payslip.employeename || data.employeeName || 'Unknown',
-                        data.employeeRole || 'Unknown',
-                        `$${(data.hourlyRate || 0).toFixed(2)}`,
-                        `$${(data.bonus || 0).toFixed(2)}`,
-                        data.includeBreaks ? 'Yes' : 'No',
-                        new Date(payslip.submissionDate).toLocaleDateString(),
-                        type === 'paid' ? new Date(payslip.payment_date).toLocaleDateString() : '',
-                        type === 'paid' ? (payslip.reference || 'N/A') : '',
+                        p.id,
+                        p.employee_name || 'Unknown',
+                        p.employee_role || 'Unknown',
+                        `$${(p.hourly_rate || 0).toFixed(2)}`,
+                        `$${(p.bonus || 0).toFixed(2)}`,
+                        p.include_breaks ? 'Yes' : 'No',
+                        p.submission_date ? new Date(p.submission_date).toLocaleDateString() : '',
+                        type === 'paid' ? (p.payment_date ? new Date(p.payment_date).toLocaleDateString() : '') : '',
+                        type === 'paid' ? (p.reference || 'N/A') : '',
                         day.date || 'N/A',
                         day.dayOff ? 'Yes' : 'No',
                         (day.workHours || 0).toFixed(2),
@@ -492,14 +533,13 @@ async function exportAllPayslips(format, type) {
             URL.revokeObjectURL(url);
             showToast(`${type} payslips exported as CSV successfully!`);
         } else if (format === 'json') {
-            const data = payslips.map((payslip, index) => ({
-                payslip_number: index + 1,
-                id: payslip.id,
-                employeeName: payslip.employeename || payslip.payslip_data?.employeeName || 'Unknown',
-                submissiondate: payslip.submissionDate,
-                payment_date: payslip.payment_date || null,
-                reference: payslip.reference || null,
-                ...payslip.payslip_data
+            const data = enrichedPayslips.map(p => ({
+                id: p.id,
+                employeeName: p.employee_name,
+                submissionDate: p.submission_date,
+                paymentDate: p.payment_date,
+                reference: p.reference,
+                ...p
             }));
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);

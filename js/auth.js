@@ -1,5 +1,6 @@
-const supabaseUrl = 'https://xsnvjpbhbxxnpqxlnxyz.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhzbnZqcGJoYnh4bnBxeGxueHl6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTgxMTgzNywiZXhwIjoyMDcxMzg3ODM3fQ.I9sWSEqIRKzrsNpwN8R6mEcBE2RW_BZShwSH9vu-phY'; // Replace with the correct anon key from Supabase dashboard
+const supabaseUrl = 'https://puwgsdzuqsjjtriyhrqv.supabase.co';
+const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB1d2dzZHp1cXNqanRyaXlocnF2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NjEwMzk2MywiZXhwIjoyMDcxNjc5OTYzfQ.R0egVbF2PjAJQ82MWUCHTdLq6UtRYnPHgj-V8Oly_I0'; // Replace with the correct anon key from Supabase dashboard
+//auth.js
 const supabase = window.supabase.createClient(supabaseUrl, supabaseKey);
 
 let currentUser = null;
@@ -26,54 +27,34 @@ async function loginUser(e) {
     const password = document.getElementById('password').value;
     showLoading();
     try {
-        console.log('Attempting login with email:', email);
         const { data, error } = await timeout(supabase.auth.signInWithPassword({ email, password }), 5000);
-        if (error) {
-            console.error('Supabase auth error:', error);
-            throw new Error(`Authentication failed: ${error.message}`);
-        }
+        if (error) throw new Error(`Authentication failed: ${error.message}`);
         currentUser = data.user.id;
         localStorage.setItem('currentUser', currentUser);
-        console.log('User authenticated, ID:', currentUser);
 
-        // Fetch or create user profile
-        let profile;
-        const { data: profileData, error: profileErr } = await timeout(
+        const { data: profile } = await timeout(
             supabase.from('profiles').select('*').eq('id', currentUser).single(),
             5000
         );
-        if (profileErr && profileErr.code === 'PGRST116') {
-            // No profile found, create a default one
-            console.log('No profile found, creating default profile for user:', currentUser);
-            const { data: newProfile, error: insertErr } = await timeout(
+
+        if (!profile) {
+            const { data: newProfile } = await timeout(
                 supabase.from('profiles').insert({
                     id: currentUser,
-                    employee_name: email.split('@')[0], // Use email prefix as default name
+                    employee_name: email.split('@')[0],
                     employee_role: 'Employee',
                     hourly_rate: 0,
                     bonus: 0,
-                    is_admin: email === 'admin@enzopay.com' // Set admin for known admin email
+                    is_admin: email === 'admin@enzopay.com'
                 }).select().single(),
                 5000
             );
-            if (insertErr) {
-                console.error('Profile creation error:', insertErr);
-                throw new Error(`Profile creation failed: ${insertErr.message}`);
-            }
-            profile = newProfile;
-            console.log('Profile created:', profile);
-        } else if (profileErr) {
-            console.error('Profile fetch error:', profileErr);
-            throw new Error(`Profile fetch failed: ${profileErr.message}`);
-        } else {
-            profile = profileData;
-            console.log('Profile fetched:', profile);
         }
 
-        isAdminUser = profile.is_admin || false;
-        console.log('Admin status:', isAdminUser);
+        const { data: finalProfile } = await supabase.from('profiles').select('*').eq('id', currentUser).single();
+        isAdminUser = finalProfile.is_admin || false;
+
         if (isAdminUser) {
-            
             showAdminPanel();
         } else {
             showUserInterface();
@@ -82,7 +63,6 @@ async function loginUser(e) {
         showToast('Login successful!');
     } catch (err) {
         showToast(`Login failed: ${err.message}`);
-        console.error('Login error details:', err);
     } finally {
         hideLoading();
     }
@@ -110,20 +90,15 @@ async function logoutUser() {
 async function updateLastLogin() {
     if (!currentUser) return;
     try {
-        showLoading();
         const { error } = await timeout(
             supabase.from('profiles').update({ last_login: new Date().toISOString() }).eq('id', currentUser),
             5000
         );
         if (error) throw error;
-        console.log('Last login updated for user:', currentUser);
     } catch (err) {
         showToast('Failed to update last login: ' + err.message);
-    } finally {
-        hideLoading();
     }
 }
-
 async function saveUser(e) {
     e.preventDefault();    
     // Check admin privileges
@@ -190,24 +165,19 @@ async function deleteUser(id) {
     document.getElementById('confirmAction').onclick = async () => {
         showLoading();
         try {
-            // Get user info before deletion for logging
             const { data: userData } = await supabase
                 .from('profiles')
-                .select('employee_name, email')
+                .select('employee_name')
                 .eq('id', id)
                 .single();
             
-            // Delete the user from auth
             const { error: authError } = await supabase.auth.admin.deleteUser(id);
             if (authError) throw authError;
             
-            // Delete from profiles
             const { error: profileError } = await supabase.from('profiles').delete().eq('id', id);
             if (profileError) throw profileError;
             
-            // Log the action
             await logAdminAction('delete_user', id, {
-                user_email: userData?.email,
                 user_name: userData?.employee_name
             });
             
@@ -216,7 +186,6 @@ async function deleteUser(id) {
             showToast('User deleted successfully');
         } catch (err) {
             showToast('Delete failed: ' + err.message);
-            console.error('Delete user error:', err);
         } finally {
             modal.style.display = 'none';
             hideLoading();
@@ -228,14 +197,12 @@ async function toggleAdminStatus(userId, makeAdmin) {
     try {
         showLoading();
         
-        // Get user info for logging
         const { data: userData } = await supabase
             .from('profiles')
-            .select('employee_name, email, is_admin')
+            .select('employee_name, is_admin')
             .eq('id', userId)
             .single();
         
-        // Don't allow users to demote themselves
         if (userId === currentUser && !makeAdmin) {
             showToast('You cannot remove your own admin privileges');
             return;
@@ -248,9 +215,7 @@ async function toggleAdminStatus(userId, makeAdmin) {
         
         if (error) throw error;
         
-        // Log the action
         await logAdminAction(makeAdmin ? 'grant_admin' : 'revoke_admin', userId, {
-            user_email: userData?.email,
             user_name: userData?.employee_name,
             previous_status: userData?.is_admin
         });
@@ -259,138 +224,70 @@ async function toggleAdminStatus(userId, makeAdmin) {
         renderUserList();
     } catch (err) {
         showToast('Failed to update admin status: ' + err.message);
-        console.error('Toggle admin status error:', err);
     } finally {
         hideLoading();
     }
 }
 
-// Enhanced admin stats
 async function updateAdminStats() {
     try {
         showLoading();
 
-        const stats = {
-            totalEmployees: 0,
-            totalAdmins: 0,
-            pendingPayslips: 0,
-            paidPayslips: 0,
-            totalPayroll: 0,
-            recentActivity: []
-        };
+        const { count: totalEmployees } = await supabase.from('profiles').select('*', { count: 'exact' });
+        const { count: totalAdmins } = await supabase.from('profiles').select('*', { count: 'exact' }).eq('is_admin', true);
+        const { count: pendingPayslips } = await supabase.from('payslips').select('*', { count: 'exact' }).eq('status', 'pending');
+        const { count: paidPayslips } = await supabase.from('payslips').select('*', { count: 'exact' }).eq('status', 'paid');
+        const { data: payrollData } = await supabase.from('payslips').select('grand_total').eq('status', 'paid');
+        const totalPayroll = payrollData.reduce((sum, p) => sum + (p.grand_total || 0), 0).toFixed(2);
 
-        // Get total employees count
-        const { count: totalCount } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact' });
-        
-        // Get admin count
-        const { count: adminCount } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact' })
-            .eq('is_admin', true);
-        
-        stats.totalEmployees = totalCount || 0;
-        stats.totalAdmins = adminCount || 0;
+        const { data: recentActivity } = await supabase.from('payslips').select('employee_name, submission_date').order('submission_date', { ascending: false }).limit(5);
 
-        // Get pending payslips count
-        const { count: pendingCount } = await supabase
-            .from('payslips')
-            .select('*', { count: 'exact' })
-            .eq('status', 'pending');
-        
-            
-        stats.pendingPayslips = pendingCount || 0;
-
-            const { count: paidCount } = await supabase
-            .from('payslips')
-            .select('*', { count: 'exact' })
-            .eq('status', 'paid');
-        
-            stats.paidPayslips = paidCount || 0;
-        // Get total payroll amount
-        const { data: payrollData } = await supabase
-            .from('payslips')
-            .select('payslip_data')
-            .eq('status', 'paid');
-        
-        stats.totalPayroll = payrollData
-            .reduce((sum, record) => sum + (record.payslip_data?.totals?.grandTotal || 0), 0)
-            .toFixed(2);
-
-        // Get recent activity (simplified)
-        const { data: activityData } = await supabase
-            .from('payslips')
-            .select('employeename, submissiondate')
-            .order('submissiondate', { ascending: false })
-            .limit(5);
-        
-        stats.recentActivity = activityData || [];
-
-        // Update UI elements
-        const totalEmployeesEl = document.getElementById('totalEmployees');
-        const totalAdminsEl = document.getElementById('totalAdmins');
-        const pendingPayslipsEl = document.getElementById('pendingPayslips');
-        const paidPayslipsEl = document.getElementById('paidPayslips');
-        const totalPayrollEl = document.getElementById('totalPayroll');
-        const activityListEl = document.getElementById('recentActivity');
-
-        if (totalEmployeesEl) totalEmployeesEl.textContent = stats.totalEmployees;
-        if (totalAdminsEl) totalAdminsEl.textContent = stats.totalAdmins;
-        if (pendingPayslipsEl) pendingPayslipsEl.textContent = stats.pendingPayslips;
-        if (paidPayslipsEl) paidPayslipsEl.textContent = stats.paidPayslips;
-        if (totalPayrollEl) totalPayrollEl.textContent = `$${stats.totalPayroll}`;
-        if (activityListEl) {
-            activityListEl.innerHTML = stats.recentActivity
-                .map(activity => `<li>${activity.employeename || 'Unknown'} submitted a payslip on ${new Date(activity.submissiondate).toLocaleDateString()}</li>`)
-                .join('');
-        }
-
-        showToast('Admin stats updated successfully!');
+        document.getElementById('totalEmployees').textContent = totalEmployees || 0;
+        document.getElementById('totalAdmins').textContent = totalAdmins || 0;
+        document.getElementById('pendingPayslips').textContent = pendingPayslips || 0;
+        document.getElementById('paidPayslips').textContent = paidPayslips || 0;
+        document.getElementById('totalPayroll').textContent = `$${totalPayroll}`;
+        document.getElementById('recentActivity').innerHTML = recentActivity
+            .map(a => `<li>${a.employee_name || 'Unknown'} submitted on ${new Date(a.submission_date).toLocaleDateString()}</li>`)
+            .join('');
     } catch (err) {
-        console.error('Failed to update admin stats:', err.message);
         showToast('Failed to load admin stats: ' + err.message);
     } finally {
         hideLoading();
     }
 }
-// Track admin activity
-// Track admin action with error handling
+
 async function logAdminAction(actionType, targetUserId, details = {}) {
-    try {
-        // Check if admin_actions table exists by attempting a simple query
-        const { error: checkError } = await supabase
-            .from('admin_actions')
-            .select('id')
-            .limit(1);
-        
-        // If table doesn't exist, skip logging
-        if (checkError && checkError.code === '42P01') { // 42P01 is "table doesn't exist" error code
-            console.warn('admin_actions table does not exist. Skipping action logging.');
-            return;
-        }
-        
-        const { error } = await supabase
-            .from('admin_actions')
-            .insert({
-                admin_id: currentUser,
-                action_type: actionType,
-                target_user_id: targetUserId,
-                details: { ...details, timestamp: new Date().toISOString() }
-            });
-        
-        if (error) {
-            console.error('Failed to log admin action:', error);
-            // Don't throw error, just log to console
-        }
-    } catch (err) {
-        console.error('Error logging admin action:', err);
-        // Don't break the main functionality if logging fails
+  try {
+    // Verify if target_user_id exists (quick check)
+    if (targetUserId) {
+      const { data: userCheck, error: checkErr } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', targetUserId)
+        .maybeSingle();  // Graceful for no-match
+
+      if (checkErr || !userCheck) {
+        console.warn(`Skipping log for invalid target_user_id: ${targetUserId} (not in profiles)`);
+        details.invalid_user_note = 'Target user not found in profiles';  // Add context
+        targetUserId = null;  // Nullify if schema allows
+      }
     }
+
+    const { error } = await supabase
+      .from('admin_actions')
+      .insert({
+        admin_id: currentUser,
+        action_type: actionType,
+        target_user_id: targetUserId,  // Now safe
+        details: { ...details, timestamp: new Date().toISOString() }
+      });
+
+    if (error) console.error('Failed to log admin action:', error);
+  } catch (err) {
+    console.error('Error logging admin action:', err);
+  }
 }
-// Render admin activity log
-// Render admin activity log
-// Render admin activity log with error handling
 async function renderAdminActivityLog() {
     const activityLog = document.getElementById('activityLog');
     if (!activityLog) return;
@@ -398,35 +295,9 @@ async function renderAdminActivityLog() {
     try {
         showLoading();
         
-        // First check if admin_actions table exists
-        const { error: checkError } = await supabase
-            .from('admin_actions')
-            .select('id')
-            .limit(1);
-        
-        if (checkError && (checkError.code === '42P01' || checkError.code === '42703')) {
-            // Table doesn't exist
-            activityLog.innerHTML = `
-                <tr>
-                    <td colspan="5">
-                        <div style="text-align: center; padding: 20px;">
-                            <i class="fas fa-exclamation-triangle" style="font-size: 24px; color: var(--warning);"></i>
-                            <p>Admin actions table not found.</p>
-                            <p>Please run the setup SQL to create the admin_actions table.</p>
-                            <button class="btn btn-sm" onclick="copySetupSQL()">
-                                <i class="fas fa-copy"></i> Copy Setup SQL
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-        
-        // Get the admin actions
         const { data: activities, error } = await supabase
             .from('admin_actions')
-            .select('id, action_type, created_at, admin_id, target_user_id, details')
+            .select('*')
             .order('created_at', { ascending: false })
             .limit(50);
         
@@ -434,82 +305,58 @@ async function renderAdminActivityLog() {
         
         activityLog.innerHTML = '';
         
-        if (!activities || activities.length === 0) {
+        if (!activities.length) {
             activityLog.innerHTML = '<tr><td colspan="5">No admin activities found</td></tr>';
             return;
         }
         
-        // Get all unique user IDs from activities
         const userIds = [...new Set([
             ...activities.map(a => a.admin_id),
             ...activities.map(a => a.target_user_id).filter(id => id)
         ])];
         
-        // Get user details in a single query
-        let userDetails = {};
-        if (userIds.length > 0) {
-            const { data: users, error: usersError } = await supabase
-                .from('profiles')
-                .select('id, employee_name')
-                .in('id', userIds);
-            
-            if (!usersError && users) {
-                users.forEach(user => {
-                    userDetails[user.id] = user.employee_name;
-                });
-            }
-        }
+        const { data: users } = await supabase
+            .from('profiles')
+            .select('id, employee_name')
+            .in('id', userIds);
         
-        // Render the activities
+        const userDetails = {};
+        users.forEach(u => userDetails[u.id] = u.employee_name);
+        
         activities.forEach(activity => {
             const tr = document.createElement('tr');
-            
-            const adminName = userDetails[activity.admin_id] || 'Unknown Admin';
-            const targetUserName = activity.target_user_id ? 
-                (userDetails[activity.target_user_id] || 'Unknown User') : 'N/A';
-            
+            const adminName = userDetails[activity.admin_id] || 'Unknown';
+            const targetName = activity.target_user_id ? userDetails[activity.target_user_id] || 'Unknown' : 'N/A';
             tr.innerHTML = `
                 <td>${adminName}</td>
                 <td>${getActionDescription(activity.action_type)}</td>
-                <td>${targetUserName}</td>
+                <td>${targetName}</td>
                 <td>${new Date(activity.created_at).toLocaleString()}</td>
-                <td title="${JSON.stringify(activity.details || {})}">
-                    ${Object.keys(activity.details || {}).length > 0 ? 'View Details' : 'No details'}
-                </td>
+                <td>${JSON.stringify(activity.details || {})}</td>
             `;
             activityLog.appendChild(tr);
         });
     } catch (err) {
         console.error('Failed to load admin activity log:', err);
-        activityLog.innerHTML = `
-            <tr>
-                <td colspan="5">
-                    <div style="text-align: center; padding: 20px; color: var(--danger);">
-                        <i class="fas fa-exclamation-circle"></i>
-                        <p>Failed to load admin activity log: ${err.message}</p>
-                    </div>
-                </td>
-            </tr>
-        `;
+        activityLog.innerHTML = `<tr><td colspan="5">Error: ${err.message}</td></tr>`;
     } finally {
         hideLoading();
     }
 }
+
 function getActionDescription(actionType) {
     const actions = {
-        'create_user': 'Created User',
         'delete_user': 'Deleted User',
-        'grant_admin': 'Granted Admin Privileges',
-        'revoke_admin': 'Revoked Admin Privileges',
+        'grant_admin': 'Granted Admin',
+        'revoke_admin': 'Revoked Admin',
         'initiate_password_reset': 'Initiated Password Reset',
         'approve_payslip': 'Approved Payslip',
         'reject_payslip': 'Rejected Payslip',
         'reopen_payslip': 'Reopened Payslip',
-        'delete_payslip': 'Deleted Payslip' // Add this line
+        'delete_payslip': 'Deleted Payslip'
     };
     return actions[actionType] || actionType;
 }
-
 
 async function renderUserList() {
     const userList = document.getElementById('userList');
@@ -517,31 +364,17 @@ async function renderUserList() {
     try {
         showLoading();
         
-        // First get profiles data
-        const { data: profiles, error: profilesError } = await supabase
+        const { data: profiles } = await supabase
             .from('profiles')
             .select('id, employee_name, employee_role, hourly_rate, is_admin, last_login')
             .order('employee_name');
         
-        if (profilesError) throw profilesError;
+        const { data: authUsers } = await supabase.auth.admin.listUsers();
         
-        // Get email addresses from auth.users (admin only)
-        let authUsers = [];
-        if (isAdminUser) {
-            const { data: authData, error: authError } = await supabase.auth.admin.listUsers();
-            if (!authError) {
-                authUsers = authData.users;
-            }
-        }
-        
-        // Combine the data
-        const usersWithEmail = profiles.map(profile => {
-            const authUser = authUsers.find(user => user.id === profile.id);
-            return {
-                ...profile,
-                email: authUser?.email || 'N/A'
-            };
-        });
+        const usersWithEmail = profiles.map(profile => ({
+            ...profile,
+            email: authUsers.users.find(u => u.id === profile.id)?.email || 'N/A'
+        }));
         
         usersWithEmail.forEach(user => {
             const tr = document.createElement('tr');
@@ -580,11 +413,11 @@ async function renderUserList() {
         });
     } catch (err) {
         showToast('Failed to load users: ' + err.message);
-        console.error('Load users error:', err);
     } finally {
         hideLoading();
     }
 }
+
 function showAdminPanel() {
     document.getElementById('loginSection').classList.add('hidden');
     document.getElementById('userInterface').classList.add('hidden');
@@ -601,11 +434,6 @@ function showUserInterface() {
     document.getElementById('adminPanel').classList.add('hidden');
 }
 
-
-
-
-// Initiate password reset for user
-// Initiate password reset using Supabase's built-in functionality
 async function initiatePasswordReset(userId) {
     try {
         showLoading();
@@ -646,130 +474,34 @@ async function initiatePasswordReset(userId) {
         hideLoading();
     }
 }
-
-// Reject pending payslip
-async function rejectPayslip(payslipId) {
-    try {
-        showLoading();
-        const { error } = await supabase
-            .from('payslips')
-            .update({ status: 'rejected' })
-            .eq('id', payslipId);
-        
-        if (error) throw error;
-        
-        // Log admin action
-        await supabase
-            .from('admin_actions')
-            .insert({
-                admin_id: currentUser,
-                action_type: 'reject_payslip',
-                target_user_id: payslipId, // This would need to be the user_id from payslip
-                details: { payslip_id: payslipId, timestamp: new Date().toISOString() }
-            });
-        
-        showToast('Payslip rejected successfully!');
-        renderPendingList();
-    } catch (err) {
-        showToast('Failed to reject payslip: ' + err.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-// Remove from paid payslips (reopen payslip)
-async function reopenPayslip(payslipId) {
-    try {
-        showLoading();
-        const { error } = await supabase
-            .from('payslips')
-            .update({ 
-                status: 'pending',
-                payment_date: null,
-                reference: null
-            })
-            .eq('id', payslipId);
-        
-        if (error) throw error;
-        
-        // Log admin action
-        await supabase
-            .from('admin_actions')
-            .insert({
-                admin_id: currentUser,
-                action_type: 'reopen_payslip',
-                target_user_id: payslipId, // This would need to be the user_id from payslip
-                details: { payslip_id: payslipId, timestamp: new Date().toISOString() }
-            });
-        
-        showToast('Payslip reopened successfully!');
-        renderPaidList();
-        renderPendingList();
-    } catch (err) {
-        showToast('Failed to reopen payslip: ' + err.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-
-// Check if user has admin privileges
 async function validateAdminAccess() {
-    try {
-        if (!currentUser) return false;
-        
-        // Check if user is admin in profiles table
-        const { data: profile, error } = await supabase
-            .from('profiles')
-            .select('is_admin')
-            .eq('id', currentUser)
-            .single();
-        
-        if (error) {
-            console.error('Admin validation error:', error);
-            return false;
-        }
-        
-        return profile.is_admin === true;
-    } catch (err) {
-        console.error('Admin validation failed:', err);
-        return false;
-    }
-}
-
-// Enhanced admin check for sensitive operations
-async function withAdminCheck(operation) {
-    const isAdmin = await validateAdminAccess();
-    if (!isAdmin) {
-        showToast('Administrator privileges required');
-        return false;
-    }
+    if (!currentUser) return false;
     
-    return operation();
+    const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', currentUser)
+        .single();
+    
+    return profile?.is_admin === true;
 }
 
-// Delete payslip permanently
-// Delete payslip permanently from database (for admin panel)
 async function deletePayslip(payslipId) {
     const modal = document.getElementById('confirmModal');
     const message = document.getElementById('confirmMessage');
     
-    message.textContent = 'Are you sure you want to permanently delete this payslip from the database? This action cannot be undone.';
+    message.textContent = 'Are you sure you want to permanently delete this payslip?';
     modal.style.display = 'flex';
     
     document.getElementById('confirmAction').onclick = async () => {
         showLoading();
         try {
-            // First get payslip details for logging
-            const { data: payslip, error: fetchError } = await supabase
+            const { data: payslip } = await supabase
                 .from('payslips')
-                .select('user_id, employeename, totals')
+                .select('user_id, employee_name')
                 .eq('id', payslipId)
                 .single();
             
-            if (fetchError) throw fetchError;
-            
-            // Delete the payslip permanently from database
             const { error } = await supabase
                 .from('payslips')
                 .delete()
@@ -777,22 +509,16 @@ async function deletePayslip(payslipId) {
             
             if (error) throw error;
             
-            // Log admin action
             await logAdminAction('delete_payslip', payslip.user_id, {
-                payslip_id: payslipId,
-                employee_name: payslip.employeename,
-                amount: payslip.totals?.grandTotal || 0,
-                timestamp: new Date().toISOString()
+                employee_name: payslip.employee_name
             });
             
-            showToast('Payslip deleted permanently from database!');
+            showToast('Payslip deleted!');
             
-            // Refresh the lists
             renderPaidList();
             renderPendingList();
             updateAdminStats();
         } catch (err) {
-            console.error('Delete payslip error:', err);
             showToast('Failed to delete payslip: ' + err.message);
         } finally {
             modal.style.display = 'none';

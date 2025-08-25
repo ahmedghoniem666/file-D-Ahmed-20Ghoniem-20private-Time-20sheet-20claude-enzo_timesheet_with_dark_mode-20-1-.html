@@ -362,27 +362,6 @@ tr:hover {
     text-align: center;
 }
 
-.confirm-dialog {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.5);
-    align-items: center;
-    justify-content: center;
-}
-
-.confirm-box {
-    background: var(--card-bg);
-    padding: 25px;
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
-    text-align: center;
-}
-
 .loading-overlay {
     display: none;
     position: fixed;
@@ -427,44 +406,6 @@ tr:hover {
     opacity: 1;
 }
 
-/* Existing styles unchanged, add the following at the end */
-.modal {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    justify-content: center;
-    align-items: center;
-    z-index: 1000;
-}
-
-.modal-content {
-    background-color: var(--card-bg);
-    padding: 20px;
-    border-radius: 8px;
-    max-width: 500px;
-    width: 90%;
-    max-height: 80vh;
-    overflow-y: auto;
-}
-
-.modal-content h2 {
-    margin-top: 0;
-}
-
-.modal-content ul li {
-    padding: 10px;
-    cursor: pointer;
-}
-
-.modal-content ul li:hover {
-    background-color: var(--hover-bg);
-}
-
-/* Add to your existing styles.css */
 .activity-list {
     list-style: none;
     padding: 0;
@@ -487,46 +428,6 @@ tr:hover {
     font-size: 0.8rem;
 }
 
-/* Responsive adjustments for the enhanced grid */
-@media (max-width: 1200px) {
-    .grid {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 768px) {
-    .grid {
-        grid-template-columns: 1fr;
-    }
-    
-    .stat-card {
-        text-align: center;
-    }
-}
-/* Add to your existing styles.css */
-.activity-list {
-    list-style: none;
-    padding: 0;
-}
-
-.activity-list li {
-    padding: 10px 15px;
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.activity-list li:last-child {
-    border-bottom: none;
-}
-
-.activity-list li small {
-    color: var(--gray);
-    font-size: 0.8rem;
-}
-
-/* Responsive adjustments for the enhanced grid */
 @media (max-width: 1200px) {
     .grid {
         grid-template-columns: repeat(2, 1fr);
@@ -553,7 +454,6 @@ tr:hover {
     }
 }
 
-/* Table styles for admin activity log */
 #activityLog tr {
     border-bottom: 1px solid var(--border-color);
 }
@@ -583,33 +483,6 @@ tr:hover {
     color: white;
 }
 
-/* Ensure buttons are visible */
-.btn {
-    display: inline-block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-}
-
-/* Specific styles for action buttons */
-.card-header .btn {
-    margin: 2px;
-}
-
-/* Make sure card header layout is correct */
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.card-header > div {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-/* Add to your styles.css */
 .payslip-details-table {
     width: 100%;
     border-collapse: collapse;
@@ -632,7 +505,6 @@ tr:hover {
     background-color: rgba(67, 97, 238, 0.05);
 }
 
-/* Badge styles */
 .badge {
     display: inline-block;
     padding: 5px 10px;

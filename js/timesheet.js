@@ -1,6 +1,5 @@
+//timesheet.js
 let historyData = [];
-let pendingPayslips = [];
-let paidPayslips = [];
 
 async function loadUserData() {
     if (!currentUser) {
@@ -21,40 +20,27 @@ async function loadUserData() {
         document.getElementById('hourlyRate').value = profile.hourly_rate || 0;
         document.getElementById('bonus').value = profile.bonus || 0;
 
-        const { data: payment, error: paymentErr } = await timeout(supabase.from('payment_data').select('*').eq('user_id', currentUser).single(), 5000);
-        let paymentData;
-        if (paymentErr && paymentErr.code === 'PGRST116') {
-            console.log('No payment data found, creating default for user:', currentUser);
-            const defaultPaymentData = { history: [], timesheet: { rows: [], includeBreaks: false } };
-            const { data: newPayment, error: insertErr } = await timeout(
-                supabase.from('payment_data').insert({ user_id: currentUser, payment_data: defaultPaymentData }).select().single(),
-                5000
-            );
-            if (insertErr) {
-                console.error('Payment data creation error:', insertErr);
-                throw insertErr;
-            }
-            paymentData = newPayment.payment_data;
-            console.log('Default payment data created:', paymentData);
-        } else if (paymentErr) {
-            console.error('Payment data fetch error:', paymentErr);
-            throw paymentErr;
-        } else {
-            paymentData = payment.payment_data || { history: [], timesheet: { rows: [], includeBreaks: false } };
-            console.log('Payment data loaded:', paymentData);
+        const { data: settings, error: settingsErr } = await timeout(supabase.from('user_settings').select('*').eq('user_id', currentUser).maybeSingle(), 5000);
+        if (settingsErr && settingsErr.code !== 'PGRST116') {
+            console.error('Settings fetch error:', settingsErr);
+            throw settingsErr;
         }
+        const defaultIncludeBreaks = settings ? settings.include_breaks_default : false;
 
-        historyData = Array.isArray(paymentData.history) ? paymentData.history.filter(p => p && p.days && Array.isArray(p.days)) : [];
-        document.getElementById('includeBreaks').checked = paymentData.timesheet?.includeBreaks || false;
+        // Load draft from localStorage
+        const draftKey = `enzopay_draft_${currentUser}`;
+        const savedDraft = localStorage.getItem(draftKey);
+        let draft = savedDraft ? JSON.parse(savedDraft) : { rows: [], includeBreaks: defaultIncludeBreaks };
+
+        document.getElementById('includeBreaks').checked = draft.includeBreaks;
+
         const tbody = document.getElementById('timesheetBody');
         tbody.innerHTML = '';
-        const rows = Array.isArray(paymentData.timesheet?.rows) ? paymentData.timesheet.rows : [];
-        console.log('Loading timesheet rows:', rows);
-        rows.forEach((day, index) => {
+        draft.rows.forEach(day => {
             if (day && day.date) {
                 addDay(day.date, day.workHours || 0, day.breakHours || 0, day.dayOff || false);
             } else {
-                console.warn(`Invalid timesheet row at index ${index}:`, day);
+                console.warn('Invalid draft row:', day);
             }
         });
         updateRowAndTotals();
@@ -69,56 +55,42 @@ async function loadUserData() {
     }
 }
 
-async function saveUserData() {
-    if (!currentUser) {
-        console.error('No current user, cannot save data.');
-        return;
-    }
-    
+function saveDraft() {
+    if (!currentUser) return;
+    const rows = [];
+    document.querySelectorAll('#timesheetBody tr').forEach(row => {
+        const date = row.querySelector('.date').value;
+        if (date) {
+            rows.push({
+                date,
+                dayOff: row.querySelector('.dayOff').checked,
+                workHours: parseFloat(row.querySelector('.workHours').value) || 0,
+                breakHours: parseFloat(row.querySelector('.breakHours').value) || 0
+            });
+        }
+    });
+    const draft = {
+        rows,
+        includeBreaks: document.getElementById('includeBreaks').checked
+    };
+    localStorage.setItem(`enzopay_draft_${currentUser}`, JSON.stringify(draft));
+}
+
+async function updateProfile() {
+    if (!currentUser) return;
     try {
-        // Only save profile data and current timesheet, not history
-        const profileUpdate = {
+        const updates = {
             employee_name: document.getElementById('employeeName').value || '',
             employee_role: document.getElementById('employeeRole').value || '',
             hourly_rate: parseFloat(document.getElementById('hourlyRate').value) || 0,
             bonus: parseFloat(document.getElementById('bonus').value) || 0
         };
-        
-        const { error: profileErr } = await supabase.from('profiles').update(profileUpdate).eq('id', currentUser);
-        if (profileErr) throw profileErr;
-        
-        // Only save current timesheet, not history
-        const rows = [];
-        document.querySelectorAll('#timesheetBody tr').forEach(row => {
-            const date = row.querySelector('.date').value;
-            if (date) {
-                rows.push({
-                    date,
-                    dayOff: row.querySelector('.dayOff').checked,
-                    workHours: parseFloat(row.querySelector('.workHours').value) || 0,
-                    breakHours: parseFloat(row.querySelector('.breakHours').value) || 0
-                });
-            }
-        });
-        
-        const paymentData = {
-            timesheet: { 
-                rows, 
-                includeBreaks: document.getElementById('includeBreaks').checked 
-            }
-            // No history data saved locally anymore
-        };
-        
-        const { error: paymentErr } = await supabase.from('payment_data').upsert({ 
-            user_id: currentUser, 
-            payment_data: paymentData 
-        });
-        
-        if (paymentErr) throw paymentErr;
-        
-        updateLastUpdated();
+        const { error } = await supabase.from('profiles').update(updates).eq('id', currentUser);
+        if (error) throw error;
+        showToast('Profile updated successfully!');
     } catch (err) {
-        console.error('Failed to save user data:', err);
+        console.error('Failed to update profile:', err);
+        showToast('Failed to update profile: ' + err.message);
     }
 }
 
@@ -126,14 +98,11 @@ function updateLastUpdated() {
     document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
 }
 
-function addDay( workHours = 0, breakHours = 1, isDayOff = false) {
+function addDay(date = new Date().toISOString().split('T')[0], workHours = 0, breakHours = 1, isDayOff = false) {
     const tbody = document.getElementById('timesheetBody');
     const tr = document.createElement('tr');
-    const today = new Date().toISOString().split('T')[0];
-    
-    //const date = today;
     tr.innerHTML = `
-        <td><input type="date" class="form-control date" value="${today}"></td>
+        <td><input type="date" class="form-control date" value="${date}"></td>
         <td><input type="checkbox" class="dayOff" ${isDayOff ? 'checked' : ''}></td>
         <td><input type="number" class="form-control workHours" step="0.01" value="${workHours}" ${isDayOff ? 'disabled' : ''}></td>
         <td><input type="number" class="form-control breakHours" step="0.01" value="${breakHours}" ${isDayOff ? 'disabled' : ''}></td>
@@ -145,18 +114,18 @@ function addDay( workHours = 0, breakHours = 1, isDayOff = false) {
     tr.querySelector('.deleteRow').addEventListener('click', () => {
         tr.remove();
         updateRowAndTotals();
-        saveUserData();
+        saveDraft();
     });
     tr.querySelectorAll('input').forEach(input => input.addEventListener('change', () => {
         updateRowAndTotals();
-        saveUserData();
+        saveDraft();
     }));
     tr.querySelector('.dayOff').addEventListener('change', (e) => {
         const isChecked = e.target.checked;
         tr.querySelector('.workHours').disabled = isChecked;
         tr.querySelector('.breakHours').disabled = isChecked;
         updateRowAndTotals();
-        saveUserData();
+        saveDraft();
     });
     updateRowAndTotals();
 }
@@ -168,6 +137,7 @@ function addWeek() {
         date.setDate(today.getDate() + i);
         addDay(date.toISOString().split('T')[0]);
     }
+    saveDraft();
 }
 
 function updateRowAndTotals() {
@@ -195,7 +165,6 @@ function updateRowAndTotals() {
     document.getElementById('totalHours').textContent = totalTotal.toFixed(2);
     document.getElementById('basePay').textContent = `$${basePay.toFixed(2)}`;
     document.getElementById('grandTotal').textContent = `$${(basePay + bonus).toFixed(2)}`;
-    //showToast('Timesheet updated.');
 }
 
 function getPayslipData() {
@@ -238,104 +207,34 @@ function getPayslipData() {
     };
 }
 
-// Submit the last saved history item to database
-// Submit all saved payslips to database
-async function submitPayslip() {
-    // Get all saved (not yet submitted) payslips
-    const savedPayslips = historyData.filter(payslip => payslip.status === 'saved');
-    
-    if (savedPayslips.length === 0) {
-        showToast('No saved payslips to submit. Please save some payslips first.');
-        return;
-    }
-    
+async function submitSinglePayslip(payslipId) {
     showLoading();
     
     try {
-        let submittedCount = 0;
-        let errors = [];
+        const submissionDate = new Date().toISOString();
         
-        // Submit each saved payslip
-        for (const payslip of savedPayslips) {
-            try {
-                console.log('Submitting saved payslip to database:', payslip.id);
-                
-                const { error } = await supabase.from('payslips').insert({
-                    user_id: currentUser,
-                    employeename: payslip.employeeName,
-                    employeerole: payslip.employeeRole,
-                    hourlyrate: payslip.hourlyRate,
-                    bonus: payslip.bonus,
-                    includebreaks: payslip.includeBreaks,
-                    days: payslip.days,
-                    totals: payslip.totals,
-                    submissiondate: new Date().toISOString(),
-                    status: 'pending',
-                    payslip_data: {
-                        employeeName: payslip.employeeName,
-                        employeeRole: payslip.employeeRole,
-                        hourlyRate: payslip.hourlyRate,
-                        bonus: payslip.bonus,
-                        includeBreaks: payslip.includeBreaks,
-                        days: payslip.days,
-                        totals: payslip.totals,
-                        submissionDate: new Date().toISOString(),
-                        wasFromHistory: true,
-                        originalSavedAt: payslip.savedAt,
-                        localId: payslip.id
-                    }
-                });
-                
-                if (error) {
-                    console.error('Payslip submission error:', error);
-                    errors.push(`Payslip ${payslip.id}: ${error.message}`);
-                    continue;
-                }
-                
-                // Mark as submitted in local history
-                const index = historyData.findIndex(item => item.id === payslip.id);
-                if (index !== -1) {
-                    historyData[index].status = 'submitted';
-                    historyData[index].submittedAt = new Date().toISOString();
-                    historyData[index].submittedToDB = true;
-                }
-                
-                submittedCount++;
-                
-            } catch (err) {
-                console.error('Error submitting payslip:', payslip.id, err);
-                errors.push(`Payslip ${payslip.id}: ${err.message}`);
-            }
-        }
+        const { error } = await supabase
+            .from('payslips')
+            .update({
+                status: 'pending',
+                submission_date: submissionDate
+            })
+            .eq('id', payslipId)
+            .eq('status', 'saved');
         
-        // Save updated history
-        saveUserData();
+        if (error) throw error;
+        
         renderUserHistory();
-        
-        // Show results
-        if (submittedCount > 0) {
-            if (errors.length === 0) {
-                showToast(`Successfully submitted ${submittedCount} payslip(s)!`);
-            } else {
-                showToast(`Submitted ${submittedCount} payslip(s), ${errors.length} failed. See console for details.`);
-                console.error('Submission errors:', errors);
-            }
-        } else {
-            showToast('No payslips were submitted. All attempts failed.');
-        }
-        
-        updateUserStats();
+        showToast('Payslip submitted successfully! Status: Pending Approval');
         
     } catch (err) {
-        console.error('Submit process failed:', err);
-        showToast('Submit process failed: ' + err.message);
+        console.error('Submit single payslip failed:', err);
+        showToast('Failed to submit payslip: ' + err.message);
     } finally {
         hideLoading();
     }
 }
 
-// Save to local history and set as last saved item
-// Save payslip to database with "saved" status
 async function saveHistory(silent = false) {
     showLoading();
     const payslip = getPayslipData();
@@ -350,42 +249,37 @@ async function saveHistory(silent = false) {
     try {
         const savedAt = new Date().toISOString();
         
-        const { data, error } = await supabase.from('payslips').insert({
+        const { data: newPayslip, error } = await supabase.from('payslips').insert({
             user_id: currentUser,
-            employeename: payslip.employeeName,
-            employeerole: payslip.employeeRole,
-            hourlyrate: payslip.hourlyRate,
+            employee_name: payslip.employeeName,
+            employee_role: payslip.employeeRole,
+            hourly_rate: payslip.hourlyRate,
             bonus: payslip.bonus,
-            includebreaks: payslip.includeBreaks,
-            days: payslip.days,
-            totals: payslip.totals,
+            include_breaks: payslip.includeBreaks,
             saved_at: savedAt,
-            status: 'saved', // Save with "saved" status
-            payslip_data: {
-                employeeName: payslip.employeeName,
-                employeeRole: payslip.employeeRole,
-                hourlyRate: payslip.hourlyRate,
-                bonus: payslip.bonus,
-                includeBreaks: payslip.includeBreaks,
-                days: payslip.days,
-                totals: payslip.totals,
-                savedAt: savedAt,
-                status: 'saved'
-            }
-        }).select(); // Get the inserted data
+            status: 'saved'
+        }).select().single();
         
         if (error) throw error;
         
-        // Add to local history array for UI display
-        const savedPayslip = {
-            ...payslip,
-            id: data[0].id, // Database ID
-            savedAt: savedAt,
-            status: 'saved',
-            dbId: data[0].id
-        };
+        const entries = payslip.days.map(day => ({
+            payslip_id: newPayslip.id,
+            date: day.date,
+            is_day_off: day.dayOff,
+            work_hours: day.workHours,
+            break_hours: day.breakHours,
+            total_hours: day.totalHours,
+            amount: day.amount
+        }));
         
-        historyData.push(savedPayslip);
+        const { error: entriesError } = await supabase.from('payslip_entries').insert(entries);
+        if (entriesError) throw entriesError;
+        
+        // Clear draft after saving
+        document.getElementById('timesheetBody').innerHTML = '';
+        updateRowAndTotals();
+        saveDraft();
+        
         renderUserHistory();
         
         if (!silent) showToast('Payslip saved to database successfully!');
@@ -397,20 +291,25 @@ async function saveHistory(silent = false) {
         hideLoading();
     }
 }
-// Load and render saved payslips from database with proper status labels
+
 async function renderUserHistory() {
     const paymentHistory = document.getElementById('paymentHistory');
     paymentHistory.innerHTML = '<p>Loading history...</p>';
     
     try {
-        // Get all payslips for this user from database (not just saved ones)
         const { data: userPayslips, error } = await supabase
             .from('payslips')
             .select('*')
             .eq('user_id', currentUser)
-            .order('saved_at', { ascending: false });
+            .order('created_at', { ascending: false });
         
         if (error) throw error;
+        
+        const payslipIds = userPayslips.map(p => p.id);
+        const { data: allEntries } = await supabase
+            .from('payslip_entries')
+            .select('*')
+            .in('payslip_id', payslipIds);
         
         paymentHistory.innerHTML = '';
         
@@ -419,37 +318,23 @@ async function renderUserHistory() {
             return;
         }
         
-        // Update local history array
         historyData = userPayslips.map(payslip => ({
-            id: payslip.id,
-            dbId: payslip.id,
-            employeeName: payslip.employeename,
-            employeeRole: payslip.employeerole,
-            hourlyRate: payslip.hourlyrate,
-            bonus: payslip.bonus,
-            includeBreaks: payslip.includebreaks,
-            days: payslip.days,
-            totals: payslip.totals,
-            savedAt: payslip.saved_at,
-            submissionDate: payslip.submissiondate,
-            paymentDate: payslip.paymentdate,
-            status: payslip.status,
-            reference: payslip.reference,
-            payslip_data: payslip.payslip_data
+            ...payslip,
+            entries: allEntries.filter(e => e.payslip_id === payslip.id).sort((a, b) => new Date(a.date) - new Date(b.date))
         }));
         
-        // Render the payslips
         historyData.forEach((payslip) => {
             const card = document.createElement('div');
             card.className = 'card';
             card.style.marginBottom = '15px';
             
-            // Get status display text and badge class
             const statusInfo = getStatusDisplay(payslip.status);
+            const minDate = payslip.entries[0]?.date || 'N/A';
+            const maxDate = payslip.entries[payslip.entries.length - 1]?.date || 'N/A';
             
             card.innerHTML = `
                 <div class="card-header">
-                    <h3 class="card-title">${payslip.employeeName || 'Unknown'} - $${(payslip.totals?.grandTotal || 0).toFixed(2)}</h3>
+                    <h3 class="card-title">${payslip.employee_name || 'Unknown'} - $${(payslip.grand_total || 0).toFixed(2)}</h3>
                     <div class="history-actions">
                         <button class="btn btn-sm btn-info" onclick="viewHistoryDetails('${payslip.id}')">
                             <i class="fas fa-eye"></i> View
@@ -462,14 +347,13 @@ async function renderUserHistory() {
                         <button class="btn btn-sm btn-danger" onclick="deleteHistoryItem('${payslip.id}')">
                             <i class="fas fa-trash"></i> Delete
                         </button>
-                        
                     </div>
                 </div>
-                 ${payslip.savedAt ? `<p><strong>Saved:</strong> ${new Date(payslip.savedAt).toLocaleString()}</p>` : ''}
-                ${payslip.submissionDate ? `<p><strong>Submitted:</strong> ${new Date(payslip.submissionDate).toLocaleString()}</p>` : ''}
-                ${payslip.paymentDate ? `<p><strong>Paid:</strong> ${new Date(payslip.paymentDate).toLocaleString()}</p>` : ''}
+                ${payslip.saved_at ? `<p><strong>Saved:</strong> ${new Date(payslip.saved_at).toLocaleString()}</p>` : ''}
+                ${payslip.submission_date ? `<p><strong>Submitted:</strong> ${new Date(payslip.submission_date).toLocaleString()}</p>` : ''}
+                ${payslip.payment_date ? `<p><strong>Paid:</strong> ${new Date(payslip.payment_date).toLocaleString()}</p>` : ''}
                 ${payslip.reference ? `<p><strong>Reference:</strong> ${payslip.reference}</p>` : ''}
-                <p><strong>Period:</strong> ${payslip.days[0]?.date || 'N/A'} to ${payslip.days[payslip.days.length - 1]?.date || 'N/A'}</p>
+                <p><strong>Period:</strong> ${minDate} to ${maxDate}</p>
                 <p><strong>Status:</strong> <span class="badge ${statusInfo.badgeClass}">${statusInfo.displayText}</span></p>
             `;
             paymentHistory.appendChild(card);
@@ -481,86 +365,22 @@ async function renderUserHistory() {
     }
 }
 
-// Helper function to get status display text and badge class
 function getStatusDisplay(status) {
     switch (status) {
         case 'saved':
-            return {
-                displayText: 'Saved (Ready to Submit)',
-                badgeClass: 'badge-warning'
-            };
+            return { displayText: 'Saved (Ready to Submit)', badgeClass: 'badge-warning' };
         case 'pending':
-            return {
-                displayText: 'Submitted (Pending Approval)',
-                badgeClass: 'badge-info'
-            };
+            return { displayText: 'Submitted (Pending Approval)', badgeClass: 'badge-info' };
         case 'paid':
-            return {
-                displayText: 'Submitted (Approved & Paid)',
-                badgeClass: 'badge-success'
-            };
+            return { displayText: 'Submitted (Approved & Paid)', badgeClass: 'badge-success' };
         case 'rejected':
-            return {
-                displayText: 'Rejected',
-                badgeClass: 'badge-danger'
-            };
+            return { displayText: 'Rejected', badgeClass: 'badge-danger' };
         default:
-            return {
-                displayText: status || 'Unknown',
-                badgeClass: 'badge-secondary'
-            };
+            return { displayText: status || 'Unknown', badgeClass: 'badge-secondary' };
     }
 }
-// Submit a saved payslip by changing its status to "pending"
-async function submitSinglePayslip(payslipId) {
-    showLoading();
-    
-    try {
-        const submissionDate = new Date().toISOString();
-        
-        // Update the payslip status from "saved" to "pending"
-        const { error } = await supabase
-            .from('payslips')
-            .update({
-                status: 'pending',
-                submissiondate: submissionDate,
-                payslip_data: {
-                    status: 'pending',
-                    submissionDate: submissionDate,                }
-            })
-            .eq('id', payslipId)
-            .eq('status', 'saved'); // Only update if still in saved status
-        
-        if (error) throw error;
-        
-        // Update local history
-        const index = historyData.findIndex(item => item.id === payslipId);
-        if (index !== -1) {
-            historyData[index].status = 'pending';
-            historyData[index].submissionDate = submissionDate;
-            historyData[index].submittedAt = new Date().toISOString();
-        }
-        
-        renderUserHistory();
-        showToast('Payslip submitted successfully! Status: Pending Approval');
-        
-    } catch (err) {
-        console.error('Submit single payslip failed:', err);
-        showToast('Failed to submit payslip: ' + err.message);
-    } finally {
-        hideLoading();
-    }
-}
-// Delete a history item
-// Update the deleteHistoryItem function to delete from database
-async function deleteHistoryItem(index) {
-    if (index < 0 || index >= historyData.length) {
-        showToast('Invalid history item.');
-        return;
-    }
-    
-    const payslip = historyData[index];
-    
+
+async function deleteHistoryItem(payslipId) {
     if (!confirm('Are you sure you want to delete this payslip from the database?')) {
         return;
     }
@@ -568,30 +388,16 @@ async function deleteHistoryItem(index) {
     showLoading();
     
     try {
-        // If it was submitted to DB, delete it from the database
-        if (payslip.submittedToDB && payslip.dbId) {
-            const { error } = await supabase
-                .from('payslips')
-                .delete()
-                .eq('id', payslip.dbId);
-            
-            if (error) throw error;
-            
-            // Log admin action
-            await logAdminAction('delete_payslip', payslip.dbId, {
-                payslip_id: payslip.dbId,
-                employee_name: payslip.employeeName,
-                timestamp: new Date().toISOString()
-            });
-        }
+        const { error } = await supabase
+            .from('payslips')
+            .delete()
+            .eq('id', payslipId);
         
-        // Remove from local history regardless
-        historyData.splice(index, 1);
-        saveUserData();
+        if (error) throw error;
+        
         renderUserHistory();
         
         showToast('Payslip deleted successfully!');
-        updateAdminStats();
         
     } catch (err) {
         console.error('Delete payslip error:', err);
@@ -601,20 +407,21 @@ async function deleteHistoryItem(index) {
     }
 }
 
-// View history details
-
-// View history details with proper status display
 async function viewHistoryDetails(payslipId) {
     try {
-        // Get payslip details from database
         const { data: payslip, error } = await supabase
             .from('payslips')
             .select('*')
             .eq('id', payslipId)
-            .order('saved_at', { ascending: false })
             .single();
         
         if (error) throw error;
+        
+        const { data: entries } = await supabase
+            .from('payslip_entries')
+            .select('*')
+            .eq('payslip_id', payslipId)
+            .order('date');
         
         const statusInfo = getStatusDisplay(payslip.status);
         const detailsContent = document.getElementById('detailsContent');
@@ -622,13 +429,13 @@ async function viewHistoryDetails(payslipId) {
         if (detailsContent) {
             detailsContent.innerHTML = `
                 <h3>Payslip Details</h3>
-                <p><strong>Employee:</strong> ${payslip.employeename || 'Unknown'} (${payslip.employeerole || 'Unknown'})</p>
+                <p><strong>Employee:</strong> ${payslip.employee_name || 'Unknown'} (${payslip.employee_role || 'Unknown'})</p>
                 <p><strong>Status:</strong> <span class="badge ${statusInfo.badgeClass}">${statusInfo.displayText}</span></p>
                 <p><strong>Saved:</strong> ${new Date(payslip.saved_at).toLocaleString()}</p>
-                ${payslip.submissiondate ? `<p><strong>Submitted:</strong> ${new Date(payslip.submissiondate).toLocaleString()}</p>` : ''}
-                ${payslip.paymentdate ? `<p><strong>Paid:</strong> ${new Date(payslip.paymentdate).toLocaleString()}</p>` : ''}
+                ${payslip.submission_date ? `<p><strong>Submitted:</strong> ${new Date(payslip.submission_date).toLocaleString()}</p>` : ''}
+                ${payslip.payment_date ? `<p><strong>Paid:</strong> ${new Date(payslip.payment_date).toLocaleString()}</p>` : ''}
                 ${payslip.reference ? `<p><strong>Reference:</strong> ${payslip.reference}</p>` : ''}
-                <p><strong>Total Amount:</strong> $${(payslip.totals?.grandTotal || 0).toFixed(2)}</p>
+                <p><strong>Total Amount:</strong> $${(payslip.grand_total || 0).toFixed(2)}</p>
                 
                 <h4>Time Entries</h4>
                 <table class="payslip-details-table">
@@ -643,13 +450,13 @@ async function viewHistoryDetails(payslipId) {
                         </tr>
                     </thead>
                     <tbody>
-                        ${payslip.days.map(day => `
+                        ${entries.map(day => `
                             <tr>
                                 <td>${day.date || 'N/A'}</td>
-                                <td>${day.dayOff ? 'Yes' : 'No'}</td>
-                                <td>${(day.workHours || 0).toFixed(2)}</td>
-                                <td>${(day.breakHours || 0).toFixed(2)}</td>
-                                <td>${(day.totalHours || 0).toFixed(2)}</td>
+                                <td>${day.is_day_off ? 'Yes' : 'No'}</td>
+                                <td>${(day.work_hours || 0).toFixed(2)}</td>
+                                <td>${(day.break_hours || 0).toFixed(2)}</td>
+                                <td>${(day.total_hours || 0).toFixed(2)}</td>
                                 <td>$${(day.amount || 0).toFixed(2)}</td>
                             </tr>
                         `).join('')}
@@ -666,13 +473,9 @@ async function viewHistoryDetails(payslipId) {
                         <i class="fas fa-trash"></i> Delete
                     </button>
                 </div>
-                
             `;
             
-            const detailsModal = document.getElementById('detailsModal');
-            if (detailsModal) {
-                detailsModal.style.display = 'flex';
-            }
+            document.getElementById('detailsModal').style.display = 'flex';
         }
     } catch (err) {
         console.error('Failed to load payslip details:', err);
@@ -681,51 +484,33 @@ async function viewHistoryDetails(payslipId) {
 }
 
 async function viewPayslipDetails(id, type) {
-    let payslip;
-
     try {
         showLoading();
 
-        if (type === 'history') {
-            payslip = historyData?.[id];
-        } else if (type === 'pending' || type === 'paid') {
-            // Fetch payslip directly from Supabase using ID
-            const { data, error } = await supabase
-                .from('payslips')
-                .select('id, employeename, payslip_data, submissiondate, payment_date, reference')
-                .eq('id', id)
-                .single();
+        const { data: payslip, error } = await supabase
+            .from('payslips')
+            .select('*')
+            .eq('id', id)
+            .single();
 
-            if (error || !data) {
-                throw new Error(`Failed to fetch ${type} payslip: ${error?.message || 'No data found'}`);
-            }
-
-            payslip = {
-                id: data.id,
-                employeeName: data.employeename || data.payslip_data?.employeeName || 'Unknown',
-                employeeRole: data.payslip_data?.employeeRole || 'Unknown',
-                hourlyRate: data.payslip_data?.hourlyRate || 0,
-                bonus: data.payslip_data?.bonus || 0,
-                includeBreaks: data.payslip_data?.includeBreaks || false,
-                days: data.payslip_data?.days || [],
-                totals: data.payslip_data?.totals || {},
-                submissiondate: data.submissionDate,
-                payment_date: data.payment_date,
-                reference: data.reference
-            };
+        if (error || !payslip) {
+            throw new Error(`Failed to fetch ${type} payslip: ${error?.message || 'No data found'}`);
         }
 
-        if (!payslip || !Array.isArray(payslip.days)) {
-            throw new Error('Invalid payslip data: Missing or invalid days array');
-        }
+        const { data: entries, error: entriesError } = await supabase
+            .from('payslip_entries')
+            .select('*')
+            .eq('payslip_id', id)
+            .order('date');
 
-        const totals = payslip.totals || {};
+        if (entriesError) throw entriesError;
+
         let content = `
             <h3>Payslip Details</h3>
-            <p><strong>Employee:</strong> ${payslip.employeeName} (${payslip.employeeRole})</p>
-            <p><strong>Hourly Rate:</strong> $${(payslip.hourlyRate || 0).toFixed(2)}</p>
+            <p><strong>Employee:</strong> ${payslip.employee_name} (${payslip.employee_role})</p>
+            <p><strong>Hourly Rate:</strong> $${(payslip.hourly_rate || 0).toFixed(2)}</p>
             <p><strong>Bonus:</strong> $${(payslip.bonus || 0).toFixed(2)}</p>
-            <p><strong>Include Breaks:</strong> ${payslip.includeBreaks ? 'Yes' : 'No'}</p>
+            <p><strong>Include Breaks:</strong> ${payslip.include_breaks ? 'Yes' : 'No'}</p>
             <h4 style="margin-top: 20px;">Time Entries</h4>
             <table>
                 <thead>
@@ -741,15 +526,14 @@ async function viewPayslipDetails(id, type) {
                 <tbody>
         `;
 
-        payslip.days.forEach(day => {
-            if (!day || !day.date) return;
+        entries.forEach(day => {
             content += `
                 <tr>
                     <td>${day.date}</td>
-                    <td>${day.dayOff ? 'Yes' : 'No'}</td>
-                    <td>${(day.workHours || 0).toFixed(2)}</td>
-                    <td>${(day.breakHours || 0).toFixed(2)}</td>
-                    <td>${(day.totalHours || 0).toFixed(2)}</td>
+                    <td>${day.is_day_off ? 'Yes' : 'No'}</td>
+                    <td>${(day.work_hours || 0).toFixed(2)}</td>
+                    <td>${(day.break_hours || 0).toFixed(2)}</td>
+                    <td>${(day.total_hours || 0).toFixed(2)}</td>
                     <td>$${(day.amount || 0).toFixed(2)}</td>
                 </tr>
             `;
@@ -759,11 +543,11 @@ async function viewPayslipDetails(id, type) {
                 </tbody>
             </table>
             <h4 style="margin-top: 20px;">Summary</h4>
-            <p><strong>Total Work Hours:</strong> ${(totals.workHours || 0).toFixed(2)}</p>
-            <p><strong>Total Break Hours:</strong> ${(totals.breakHours || 0).toFixed(2)}</p>
-            <p><strong>Total Hours:</strong> ${(totals.totalHours || 0).toFixed(2)}</p>
-            <p><strong>Base Pay:</strong> $${(totals.basePay || 0).toFixed(2)}</p>
-            <p><strong>Grand Total:</strong> $${(totals.grandTotal || 0).toFixed(2)}</p>
+            <p><strong>Total Work Hours:</strong> ${(payslip.total_work_hours || 0).toFixed(2)}</p>
+            <p><strong>Total Break Hours:</strong> ${(payslip.total_break_hours || 0).toFixed(2)}</p>
+            <p><strong>Total Hours:</strong> ${(payslip.total_hours || 0).toFixed(2)}</p>
+            <p><strong>Base Pay:</strong> $${(payslip.base_pay || 0).toFixed(2)}</p>
+            <p><strong>Grand Total:</strong> $${(payslip.grand_total || 0).toFixed(2)}</p>
         `;
 
         if (type === 'paid') {
@@ -776,16 +560,7 @@ async function viewPayslipDetails(id, type) {
         const detailsContent = document.getElementById('detailsContent');
         if (detailsContent) {
             detailsContent.innerHTML = content;
-            const detailsModal = document.getElementById('detailsModal');
-            if (detailsModal) {
-                detailsModal.style.display = 'flex';
-            } else {
-                console.error('Modal element detailsModal not found in DOM');
-                showToast('Failed to display payslip: Modal not found');
-            }
-        } else {
-            console.error('Element detailsContent not found in DOM');
-            showToast('Failed to display payslip: Content container not found');
+            document.getElementById('detailsModal').style.display = 'flex';
         }
     } catch (err) {
         console.error('Failed to view payslip details:', err.message, { id, type });
@@ -799,19 +574,13 @@ async function viewPayslipDetails(id, type) {
 async function updateUserStats() {
     try {
         showLoading();
-        const { data: pending, error: pendingErr } = await timeout(supabase.from('payslips').select('*').eq('user_id', currentUser).eq('status', 'pending'), 5000);
-        if (pendingErr) {
-            console.error('Pending payslips fetch error:', pendingErr);
-            throw pendingErr;
-        }
-        const { data: paid, error: paidErr } = await timeout(supabase.from('payslips').select('*').eq('user_id', currentUser).eq('status', 'paid'), 5000);
-        if (paidErr) {
-            console.error('Paid payslips fetch error:', paidErr);
-            throw paidErr;
-        }
+        const { data: pending, error: pendingErr } = await timeout(supabase.from('payslips').select('id').eq('user_id', currentUser).eq('status', 'pending'), 5000);
+        if (pendingErr) throw pendingErr;
+        const { data: paid, error: paidErr } = await timeout(supabase.from('payslips').select('grand_total').eq('user_id', currentUser).eq('status', 'paid'), 5000);
+        if (paidErr) throw paidErr;
         document.getElementById('userPendingPayslips').textContent = pending.length;
         document.getElementById('userPaidPayslips').textContent = paid.length;
-        let totalEarned = historyData.reduce((sum, p) => sum + (p.totals?.grandTotal || 0), 0) + paid.reduce((sum, p) => sum + (p.payslip_data?.totals?.grandTotal || 0), 0);
+        const totalEarned = paid.reduce((sum, p) => sum + (p.grand_total || 0), 0);
         document.getElementById('userTotalEarned').textContent = `$${totalEarned.toFixed(2)}`;
         console.log('User stats updated:', { pending: pending.length, paid: paid.length, totalEarned });
     } catch (err) {
@@ -825,15 +594,19 @@ async function updateUserStats() {
 async function markAsPaid(payslipId) {
     try {
         const referenceInput = document.getElementById(`paymentRef-${payslipId}`);
+        const notesInput = document.getElementById(`notes-${payslipId}`);
+        
         if (!referenceInput || !referenceInput.value) {
             showToast('Please enter a payment reference');
             return;
         }
+        
         const reference = referenceInput.value;
+        const notes = notesInput ? notesInput.value : '';
         const paymentDate = new Date().toISOString();
 
         showLoading();
-        // Update payslip in database
+        
         const { error } = await supabase
             .from('payslips')
             .update({
@@ -843,16 +616,35 @@ async function markAsPaid(payslipId) {
             })
             .eq('id', payslipId);
 
-        if (error) {
-            showToast('Failed to mark as paid: ' + error.message);
-            return;
-        }
+        if (error) throw error;
 
-        showToast('Payslip marked as paid!');
-        // Refresh lists
-        renderPendingList();
+const { data: payslipData, error: fetchErr } = await supabase
+  .from('payslips')
+  .select('user_id')
+  .eq('id', payslipId)
+  .single();
+
+if (fetchErr || !payslipData) {
+  console.error('Failed to fetch payslip user_id:', fetchErr);
+  showToast('Error fetching payslip details for logging.');
+  // Optionally continue without logging
+} else {
+  await logAdminAction('approve_payslip', payslipData.user_id, {  // Use user_id here
+    payslip_id: payslipId,  // Pass payslip_id in details for reference
+    reference: reference,
+    notes: notes,
+    timestamp: new Date().toISOString()
+  });
+  showToast('Payslip approved and marked as paid!');
+          renderPendingList();
         renderPaidList();
         updateAdminStats();
+}        
+
+
+        
+        
+
     } catch (err) {
         showToast('Error marking as paid: ' + err.message);
     } finally {
@@ -863,7 +655,6 @@ async function markAsPaid(payslipId) {
 async function downloadPayslip(payslipId) {
     try {
         showLoading();
-        // Fetch payslip from database
         const { data: payslip, error } = await supabase
             .from('payslips')
             .select('*')
@@ -875,14 +666,22 @@ async function downloadPayslip(payslipId) {
             return;
         }
 
-        // Prefer top-level fields, fallback to payslip_data if needed
-        const employeeName = payslip.employeename || payslip.payslip_data?.employeeName || 'Payslip';
+        const { data: entries } = await supabase
+            .from('payslip_entries')
+            .select('*')
+            .eq('payslip_id', payslipId)
+            .order('date');
 
-        const blob = new Blob([JSON.stringify(payslip, null, 2)], { type: 'application/json' });
+        const exportData = {
+            ...payslip,
+            entries
+        };
+
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${employeeName}_payslip.json`;
+        a.download = `${payslip.employee_name || 'Payslip'}_payslip.json`;
         a.click();
         URL.revokeObjectURL(url);
 
@@ -894,27 +693,20 @@ async function downloadPayslip(payslipId) {
     }
 }
 
-// 3. Render paid payslips from database
 async function renderPaidList() {
     const paidList = document.getElementById('paidList');
-    if (!paidList) {
-        console.error('Paid list element not found');
-        return;
-    }
+    if (!paidList) return;
     
     paidList.innerHTML = '';
     try {
         showLoading();
         const { data: paidPayslips, error } = await supabase
             .from('payslips')
-            .select('id, user_id, employeename, payment_date, payslip_data, submissiondate, reference, totals')
+            .select('*')
             .eq('status', 'paid')
             .order('payment_date', { ascending: false });
         
-        if (error) {
-            console.error('Error fetching paid payslips:', error);
-            throw error;
-        }
+        if (error) throw error;
 
         if (!paidPayslips || paidPayslips.length === 0) {
             paidList.innerHTML = '<p>No paid payslips found.</p>';
@@ -926,14 +718,9 @@ async function renderPaidList() {
             card.className = 'card';
             card.style.marginBottom = '15px';
             
-            // Format the amount safely
-            const amount = payslip.totals?.grandTotal || 
-                          payslip.payslip_data?.totals?.grandTotal || 
-                          0;
-            
             card.innerHTML = `
                 <div class="card-header">
-                    <h3 class="card-title">${payslip.employeename || 'Unknown'} - $${amount.toFixed(2)}</h3>
+                    <h3 class="card-title">${payslip.employee_name || 'Unknown'} - $${(payslip.grand_total || 0).toFixed(2)}</h3>
                     <div>
                         <button class="btn btn-sm btn-info" onclick="viewPayslipDetails('${payslip.id}', 'paid')">
                             <i class="fas fa-eye"></i> Details
@@ -944,7 +731,7 @@ async function renderPaidList() {
                         <button class="btn btn-sm btn-danger" onclick="deletePayslip('${payslip.id}')">
                             <i class="fas fa-trash"></i> Delete
                         </button>
-                        <button class="btn btn-sm btn-secondary" onclick="downloadPayslip('${payslip.id}', 'paid')">
+                        <button class="btn btn-sm btn-secondary" onclick="downloadPayslip('${payslip.id}')">
                             <i class="fas fa-download"></i> Download
                         </button>
                     </div>
@@ -954,8 +741,6 @@ async function renderPaidList() {
             `;
             paidList.appendChild(card);
         });
-
-        showToast('Paid payslips loaded successfully!');
     } catch (err) {
         console.error('Failed to load paid payslips:', err);
         showToast('Failed to load paid payslips: ' + err.message);
@@ -963,7 +748,7 @@ async function renderPaidList() {
         hideLoading();
     }
 }
-// Enhanced pending list with reject option
+
 async function renderPendingList() {
     const pendingList = document.getElementById('pendingList');
     pendingList.innerHTML = '';
@@ -971,9 +756,9 @@ async function renderPendingList() {
         showLoading();
         const { data: pendingPayslips, error } = await supabase
             .from('payslips')
-            .select('id, user_id, employeename, payslip_data, submissiondate, totals')
+            .select('*')
             .eq('status', 'pending')
-            .order('submissiondate', { ascending: false });
+            .order('submission_date', { ascending: false });
         
         if (error) throw error;
 
@@ -989,7 +774,7 @@ async function renderPendingList() {
 
             card.innerHTML = `
                 <div class="card-header">
-                    <h3 class="card-title">${payslip.employeename || 'Unknown'} - $${(payslip.totals?.grandTotal || 0).toFixed(2)}</h3>
+                    <h3 class="card-title">${payslip.employee_name || 'Unknown'} - $${(payslip.grand_total || 0).toFixed(2)}</h3>
                     <div>
                         <button class="btn btn-sm btn-info" onclick="viewPayslipDetails('${payslip.id}', 'pending')">
                             <i class="fas fa-eye"></i> Details
@@ -1002,7 +787,7 @@ async function renderPendingList() {
                         </button>
                     </div>
                 </div>
-                <p><strong>Submitted:</strong> ${new Date(payslip.submissiondate).toLocaleDateString()}</p>
+                <p><strong>Submitted:</strong> ${new Date(payslip.submission_date).toLocaleDateString()}</p>
                 <div class="form-group">
                     <label class="form-label">Payment Reference</label>
                     <input type="text" class="form-control" id="paymentRef-${payslip.id}" placeholder="Enter payment reference">
@@ -1021,60 +806,57 @@ async function renderPendingList() {
     }
 }
 
-
-// Enhanced markAsPaid function with notes
-async function markAsPaid(payslipId) {
+async function rejectPayslip(payslipId) {
     try {
-        const referenceInput = document.getElementById(`paymentRef-${payslipId}`);
-        const notesInput = document.getElementById(`notes-${payslipId}`);
-        
-        if (!referenceInput || !referenceInput.value) {
-            showToast('Please enter a payment reference');
-            return;
-        }
-        
-        const reference = referenceInput.value;
-        const notes = notesInput ? notesInput.value : '';
-        const paymentDate = new Date().toISOString();
-
         showLoading();
-        
-        // Update payslip in database
         const { error } = await supabase
             .from('payslips')
-            .update({
-                status: 'paid',
-                reference: reference,
-                payment_date: paymentDate,
-                total_amount: parseFloat(document.getElementById(`total-${payslipId}`)?.value) || 0
+            .update({ status: 'rejected' })
+            .eq('id', payslipId);
+        
+        if (error) throw error;
+        const { data: payslipData, error: fetchErr } = await supabase
+            .from('payslips')
+            .select('user_id')
+            .eq('id', payslipId)
+            .single();
+        await logAdminAction('reject_payslip', payslipData.user_id, { timestamp: new Date().toISOString() });
+        
+        showToast('Payslip rejected successfully!');
+        renderPendingList();
+    } catch (err) {
+        showToast('Failed to reject payslip: ' + err.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function reopenPayslip(payslipId) {
+    try {
+        showLoading();
+        const { error } = await supabase
+            .from('payslips')
+            .update({ 
+                status: 'pending',
+                payment_date: null,
+                reference: null
             })
             .eq('id', payslipId);
-
-        if (error) throw error;
-
-        // Log admin action with notes
-        await supabase
-            .from('admin_actions')
-            .insert({
-                admin_id: currentUser,
-                action_type: 'approve_payslip',
-                target_user_id: payslipId, // This should be the user_id from payslip
-                details: { 
-                    payslip_id: payslipId, 
-                    reference: reference,
-                    notes: notes,
-                    timestamp: new Date().toISOString() 
-                }
-            });
-
-        showToast('Payslip approved and marked as paid!');
         
-        // Refresh lists
-        renderPendingList();
+        if (error) throw error;
+        
+        const { data: payslipData, error: fetchErr } = await supabase
+  .from('payslips')
+  .select('user_id')
+  .eq('id', payslipId)
+  .single();
+        await logAdminAction('reopen_payslip', payslipData.user_id, { timestamp: new Date().toISOString() });
+        
+        showToast('Payslip reopened successfully!');
         renderPaidList();
-        updateAdminStats();
+        renderPendingList();
     } catch (err) {
-        showToast('Error marking as paid: ' + err.message);
+        showToast('Failed to reopen payslip: ' + err.message);
     } finally {
         hideLoading();
     }
