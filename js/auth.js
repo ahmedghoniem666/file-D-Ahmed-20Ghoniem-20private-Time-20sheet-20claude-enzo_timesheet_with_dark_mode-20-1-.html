@@ -107,6 +107,7 @@ async function saveUser(e) {
         showToast('Administrator privileges required');
         return;
     }
+
     const newEmail = document.getElementById('newEmail').value;
     const newPassword = document.getElementById('newPassword').value;
     const newEmployeeName = document.getElementById('newEmployeeName').value;
@@ -116,22 +117,51 @@ async function saveUser(e) {
     
     showLoading();
     try {
-        // First create the auth user
+        // Initialize admin client with service key (ensure correct URL)
+        const adminSupabase = supabase; // Assumes initialized with service_role key
+        console.log(`Creating user with email: ${newEmail}`);
+
+        // Create auth user with explicit invite (sends confirmation email)
         const { data: authData, error: authErr } = await timeout(
-            supabase.auth.admin.createUser({
+            adminSupabase.auth.admin.createUser({
                 email: newEmail,
                 password: newPassword,
-                email_confirm: true
+                email_confirm: false, // Let inviteUserByEmail handle confirmation
+                user_metadata: {
+                    employee_name: newEmployeeName,
+                    employee_role: newEmployeeRole
+                }
             }),
             5000
         );
-        
-        if (authErr) throw authErr;
+
+        if (authErr) {
+            console.error('Auth creation error:', authErr);
+            throw new Error(`Failed to create user: ${authErr.message}`);
+        }
+
         const userId = authData.user.id;
-        
-        // Then create the profile
+        console.log(`User created with ID: ${userId}`);
+
+        // Send confirmation email via invite
+        const { error: inviteErr } = await timeout(
+            adminSupabase.auth.admin.inviteUserByEmail(newEmail, {
+                redirectTo: 'https://enzotimesheet.vercel.app/' // Update to your app's confirmation URL
+            }),
+            5000
+        );
+
+        if (inviteErr) {
+            console.error('Invite email error:', inviteErr);
+            // Optional: Roll back if email fails
+            await adminSupabase.auth.admin.deleteUser(userId);
+            throw new Error(`Failed to send confirmation email: ${inviteErr.message}`);
+        }
+
+        // Create profile
+        console.log(`Creating profile for user ${userId}`);
         const { error: profileErr } = await timeout(
-            supabase.from('profiles').insert({
+            adminSupabase.from('profiles').insert({
                 id: userId,
                 employee_name: newEmployeeName,
                 employee_role: newEmployeeRole,
@@ -141,15 +171,49 @@ async function saveUser(e) {
             }),
             5000
         );
-        
-        if (profileErr) throw profileErr;
-        showToast('User added successfully');
+
+        if (profileErr) {
+            console.error('Profile creation error:', profileErr);
+            // Roll back auth user
+            await adminSupabase.auth.admin.deleteUser(userId);
+            throw new Error(`Failed to create profile: ${profileErr.message}`);
+        }
+
+        // Create default user settings
+        console.log(`Creating default settings for user ${userId}`);
+        const { error: settingsErr } = await timeout(
+            adminSupabase.from('user_settings').insert({
+                user_id: userId,
+                include_breaks_default: true,
+                currency: 'USD',
+                date_format: 'YYYY-MM-DD'
+            }),
+            5000
+        );
+
+        if (settingsErr) {
+            console.error('Settings creation error:', settingsErr);
+            // Optional: Roll back profile and auth
+            await adminSupabase.from('profiles').delete().eq('id', userId);
+            await adminSupabase.auth.admin.deleteUser(userId);
+            throw new Error(`Failed to create user settings: ${settingsErr.message}`);
+        }
+
+        // Log admin action
+        console.log(`Logging user creation for ${userId}`);
+        await logAdminAction('create_user', userId, {
+            user_name: newEmployeeName,
+            email: newEmail,
+            timestamp: new Date().toISOString()
+        });
+
+        showToast('User added successfully, confirmation email sent');
         e.target.reset();
         renderUserList();
         updateAdminStats();
     } catch (err) {
-        showToast('Add user failed: ' + err.message);
         console.error('Add user error:', err);
+        showToast(`Add user failed: ${err.message}`);
     } finally {
         hideLoading();
     }
@@ -165,28 +229,68 @@ async function deleteUser(id) {
     document.getElementById('confirmAction').onclick = async () => {
         showLoading();
         try {
-            const { data: userData } = await supabase
+            // Verify user exists in auth.users
+            console.log(`Checking user ${id} in auth.users`);
+            const { data: user, error: checkErr } = await supabase.auth.admin.getUserById(id);
+            if (checkErr || !user) {
+                console.warn(`User ${id} not found in auth.users`);
+                showToast('User not found in authentication system.');
+                return;
+            }
+
+            // Fetch profile for logging (optional, for employee_name)
+            console.log(`Fetching profile for user ${id}`);
+            const { data: userData, error: profileFetchErr } = await supabase
                 .from('profiles')
                 .select('employee_name')
                 .eq('id', id)
-                .single();
-            
+                .maybeSingle(); // Use maybeSingle to handle missing profiles
+            if (profileFetchErr) {
+                console.error('Profile fetch error:', profileFetchErr);
+                // Continue deletion even if profile is missing
+            }
+
+            // Clean related tables to avoid constraint issues
+            console.log(`Cleaning related data for user ${id}`);
+            const { error: settingsErr } = await supabase.from('user_settings').delete().eq('user_id', id);
+            if (settingsErr) console.error('Settings delete error:', settingsErr);
+
+            const { error: payslipErr } = await supabase.from('payslips').delete().eq('user_id', id);
+            if (payslipErr) console.error('Payslips delete error:', payslipErr);
+
+            const { error: actionsErr } = await supabase.from('admin_actions').delete().eq('target_user_id', id);
+            if (actionsErr) console.error('Admin actions delete error:', actionsErr);
+
+            // Delete profile
+            console.log(`Deleting profile for user ${id}`);
+            const { error: profileErr } = await supabase.from('profiles').delete().eq('id', id);
+            if (profileErr) console.error('Profile delete error:', profileErr);
+
+            // Delete auth user
+            console.log(`Deleting auth user ${id}`);
             const { error: authError } = await supabase.auth.admin.deleteUser(id);
-            if (authError) throw authError;
-            
-            const { error: profileError } = await supabase.from('profiles').delete().eq('id', id);
-            if (profileError) throw profileError;
-            
-            await logAdminAction('delete_user', id, {
-                user_name: userData?.employee_name
+            if (authError) {
+                console.error('Auth delete error:', authError);
+                throw new Error(`Failed to delete user from auth: ${authError.message}`);
+            }
+
+            // Log the action (use null for target_user_id if user is deleted)
+            console.log(`Logging admin action for user deletion ${id}`);
+            await logAdminAction('delete_user', null, {
+                user_id: id,
+                user_name: userData?.employee_name || 'Unknown',
+                timestamp: new Date().toISOString()
             });
-            
+
+            // Update UI
             renderUserList();
             updateAdminStats();
             showToast('User deleted successfully');
         } catch (err) {
-            showToast('Delete failed: ' + err.message);
+            console.error('Delete failed:', err);
+            showToast(`Delete failed: ${err.message}`);
         } finally {
+            console.log('Hiding modal and loading state');
             modal.style.display = 'none';
             hideLoading();
         }
@@ -435,44 +539,102 @@ function showUserInterface() {
 }
 
 async function initiatePasswordReset(userId) {
-    try {
+    const modal = document.getElementById('confirmModal');
+    const message = document.getElementById('confirmMessage');
+    const confirmButton = document.getElementById('confirmAction');
+
+    message.textContent = 'Send a password reset email to the user? They will receive a link to set a new password.';
+    modal.style.display = 'flex';
+
+    confirmButton.onclick = async () => {
         showLoading();
-        
-        // Get user email from auth.users table
-        const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(userId);
-        
-        if (authError || !authUser) {
-            showToast('Failed to find user: ' + (authError?.message || 'User not found'));
-            return;
+        try {
+            // Verify user exists
+            console.log(`Checking user ${userId} in auth.users`);
+            const { data: authUser, error: authError } = await timeout(
+                supabase.auth.admin.getUserById(userId),
+                5000
+            );
+            if (authError || !authUser) {
+                console.error('User fetch error:', JSON.stringify(authError, null, 2));
+                showToast('Failed to find user: ' + (authError?.message || 'User not found'));
+                return;
+            }
+
+            const userEmail = authUser.user.email;
+            console.log(`Requesting password reset email for ${userEmail}`);
+
+            // Try client-side resetPasswordForEmail
+            const { error: clientError } = await timeout(
+                supabase.auth.resetPasswordForEmail(userEmail, {
+                    redirectTo: 'https://enzotimesheet.vercel.app/reset-password.html' // Update to your reset page URL
+                }),
+                5000
+            );
+
+            if (clientError) {
+                console.error('Client reset error:', JSON.stringify(clientError, null, 2));
+                // Fallback to admin generateLink
+                console.log(`Falling back to admin generateLink for ${userEmail}`);
+                const { data: linkData, error: adminError } = await timeout(
+                    supabase.auth.admin.generateLink({
+                        type: 'recovery',
+                        email: userEmail,
+                        options: {
+                            redirectTo: 'https://enzotimesheet.vercel.app/reset-password.html' // Update to your reset page URL
+                        }
+                    }),
+                    5000
+                );
+
+                if (adminError) {
+                    console.error('Admin reset error:', JSON.stringify(adminError, null, 2));
+                    throw new Error(`Failed to generate reset link: ${adminError.message}`);
+                }
+
+                console.log('Admin reset link generated:', linkData.properties.action_link);
+
+                // Store reset token in profiles
+                console.log(`Storing reset token for user ${userId}`);
+                const token = linkData.properties.action_link.split('token=')[1] || null;
+                const { error: profileError } = await supabase.from('profiles').update({
+                    password_reset_token: token,
+                    token_expiry: new Date(Date.now() + 3600 * 1000).toISOString() // 1-hour expiry
+                }).eq('id', userId);
+
+                if (profileError) {
+                    console.error('Profile update error:', JSON.stringify(profileError, null, 2));
+                    // Continue, as token storage is optional
+                }
+
+                // Log admin action
+                console.log(`Logging password reset for user ${userId}`);
+                await logAdminAction('initiate_password_reset', userId, {
+                    user_email: userEmail,
+                    reset_link: linkData.properties.action_link,
+                    method: 'admin_generateLink',
+                    timestamp: new Date().toISOString()
+                });
+            } else {
+                console.log('Client-side reset email requested successfully');
+                // Log admin action for client-side attempt
+                await logAdminAction('initiate_password_reset', userId, {
+                    user_email: userEmail,
+                    reset_link: 'client-side request',
+                    method: 'resetPasswordForEmail',
+                    timestamp: new Date().toISOString()
+                });
+            }
+
+            showToast(`Password reset email requested for ${userEmail}`);
+        } catch (err) {
+            console.error('Password reset error:', JSON.stringify(err, null, 2));
+            showToast(`Failed to initiate password reset: ${err.message}`);
+        } finally {
+            modal.style.display = 'none';
+            hideLoading();
         }
-        
-        const userEmail = authUser.user.email;
-        
-        // Use Supabase's built-in password reset
-        const { error: resetError } = await supabase.auth.admin.generateLink({
-            type: 'recovery',
-            email: userEmail,
-        });
-        
-        if (resetError) {
-            showToast('Failed to generate reset link: ' + resetError.message);
-            return;
-        }
-        
-        // Log admin action
-        await logAdminAction('initiate_password_reset', userId, {
-            user_email: userEmail,
-            timestamp: new Date().toISOString()
-        });
-        
-        showToast(`Password reset email sent to ${userEmail}`);
-        
-    } catch (err) {
-        console.error('Password reset error:', err);
-        showToast('Failed to initiate password reset: ' + err.message);
-    } finally {
-        hideLoading();
-    }
+    };
 }
 async function validateAdminAccess() {
     if (!currentUser) return false;
