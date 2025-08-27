@@ -48,6 +48,5 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
                     document.getElementById('error').classList.remove('hidden');
                 }
             }
-
             document.getElementById('submitReset').addEventListener('click', resetPassword);
         });
