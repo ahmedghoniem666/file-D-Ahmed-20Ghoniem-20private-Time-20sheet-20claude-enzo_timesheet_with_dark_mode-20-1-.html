@@ -10,26 +10,25 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
             const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey); // Update with anon key
 
-// Assume supabaseClient is initialized on page load
-
-// Listen for auth state changes (run this once on page init)
+// On page init (after supabaseClient setup)
 supabaseClient.auth.onAuthStateChange((event, session) => {
+    console.log('Auth event:', event);
     if (event === 'PASSWORD_RECOVERY') {
-        console.log('Password recovery mode detected');
-        // Optionally show the password form if hidden
-    } else if (event === 'SIGNED_IN' && session) {
-        console.log('User signed in via recovery');
+        // Show password form if hidden
+        document.getElementById('passwordForm').classList.remove('hidden'); // Assume you have a form element
+    } else if (event === 'INITIAL_SESSION' && !session) {
+        document.getElementById('error').textContent = 'No recovery session detected. Request a new reset link.';
+        document.getElementById('error').classList.remove('hidden');
     }
 });
 
 async function resetPassword() {
-    // Parse hash params
-    const hash = window.location.hash.substring(1); // Remove the #
+    const hash = window.location.hash.substring(1);
     const hashParams = new URLSearchParams(hash);
+    const recoveryType = hashParams.get('type');
 
-    // Check if it's a recovery flow
-    if (hashParams.get('type') !== 'recovery') {
-        document.getElementById('error').textContent = 'Invalid or expired reset link';
+    if (recoveryType !== 'recovery') {
+        document.getElementById('error').textContent = recoveryType ? 'Invalid link type.' : 'Invalid or expired reset link. Please request a new one.';
         document.getElementById('error').classList.remove('hidden');
         return;
     }
@@ -42,27 +41,22 @@ async function resetPassword() {
     }
 
     try {
-        // Confirm session is active (Supabase auto-sets from hash)
         const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
         if (sessionError || !session) {
-            throw new Error('No active session - invalid reset link');
+            throw new Error('No active session - link may be expired or invalid');
         }
 
-        // Update password
         const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
         if (error) throw error;
 
-        // Optional: Clear any stored token if you were using it
-        await supabaseClient.from('profiles').update({
-            password_reset_token: null,
-            token_expiry: null
-        }).eq('id', session.user.id);
+        // Optional clear
+        await supabaseClient.from('profiles').update({ password_reset_token: null, token_expiry: null }).eq('id', session.user.id);
 
-        document.getElementById('success').textContent = 'Password updated successfully! Redirecting to login...';
+        document.getElementById('success').textContent = 'Password updated! Redirecting...';
         document.getElementById('success').classList.remove('hidden');
         setTimeout(() => window.location.href = '/login', 2000);
     } catch (err) {
-        document.getElementById('error').textContent = 'Failed to update password: ' + err.message;
+        document.getElementById('error').textContent = `Failed: ${err.message}. Link may be expired—try a new reset.`;
         document.getElementById('error').classList.remove('hidden');
     }
 }
