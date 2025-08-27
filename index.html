@@ -197,6 +197,28 @@
             </div>
             <div class="card">
                 <div class="card-header">
+                    <h2 class="card-title">Upload Insightful Data</h2>
+                </div>
+                <div class="file-format-info">
+                    <h4>Supported File Formats</h4>
+                    <p>You can upload CSV or Excel files with the following format:</p>
+                    <ul>
+                        <li>CSV files should have columns: <strong>Employee Name, Date, Work Time [h]</strong></li>
+                        <li>Excel files should have similar column headers</li>
+                        <li>Date format: <strong>DD-MMM-YY</strong> (e.g., 18-Aug-25)</li>
+                        <li>Time format: <strong>H:MM</strong> or <strong>HH:MM</strong> (e.g., 8:07 or 08:07)</li>
+                    </ul>
+                    <p><strong>Example:</strong></p>
+                    <pre>
+Employee Name,Date,Work Time [h]
+Joseph,18-Aug-25,8:07
+Joseph,19-Aug-25,7:25
+Joseph,20-Aug-25,7:16</pre>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
                     <h2 class="card-title">Payment History</h2>
                 </div>
                 <div id="paymentHistory"></div>
@@ -431,4 +453,5 @@
         <div id="toast" class="toast"></div>
     </div>
 </body>
+
 </html>
