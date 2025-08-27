@@ -27,11 +27,7 @@ async function resetPassword() {
     const hashParams = new URLSearchParams(hash);
     const recoveryType = hashParams.get('type');
 
-    if (recoveryType !== 'recovery') {
-        document.getElementById('error').textContent = recoveryType ? 'Invalid link type.' : 'Invalid or expired reset link. Please request a new one.';
-        document.getElementById('error').classList.remove('hidden');
-        return;
-    }
+
 
     const newPassword = document.getElementById('newPassword').value;
     if (!newPassword || newPassword.length < 6) {
