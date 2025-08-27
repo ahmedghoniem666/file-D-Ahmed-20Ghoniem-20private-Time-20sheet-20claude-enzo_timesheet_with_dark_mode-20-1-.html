@@ -50,11 +50,12 @@ async function resetPassword() {
 
         document.getElementById('success').textContent = 'Password updated! Redirecting...';
         document.getElementById('success').classList.remove('hidden');
-        setTimeout(() => window.location.href = '/login', 2000);
+        setTimeout(() => window.location.href, 2000);
     } catch (err) {
         document.getElementById('error').textContent = `Failed: ${err.message}. Link may be expired—try a new reset.`;
         document.getElementById('error').classList.remove('hidden');
     }
 }
             document.getElementById('submitReset').addEventListener('click', resetPassword);
+
         });
