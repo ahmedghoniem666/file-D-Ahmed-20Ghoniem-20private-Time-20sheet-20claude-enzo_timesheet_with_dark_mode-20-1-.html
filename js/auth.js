@@ -568,6 +568,7 @@ async function initiatePasswordReset(userId) {
             const { error: clientError } = await timeout(
                 supabase.auth.resetPasswordForEmail(userEmail, {
                     redirectTo: 'https://enzotimesheet.vercel.app/reset-password.html' // Update to your reset page URL
+                    ,type : 'recovery' // Ensure the type is set to 'recovery'
                 }),
                 5000
             );
