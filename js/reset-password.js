@@ -10,43 +10,61 @@ const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS
 
             const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey); // Update with anon key
 
-            async function resetPassword() {
-                const urlParams = new URLSearchParams(window.location.search);
-                const token = urlParams.get('token');
+// Assume supabaseClient is initialized on page load
 
-                if (!token) {
-                    document.getElementById('error').textContent = 'Invalid or missing reset token';
-                    document.getElementById('error').classList.remove('hidden');
-                    return;
-                }
+// Listen for auth state changes (run this once on page init)
+supabaseClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+        console.log('Password recovery mode detected');
+        // Optionally show the password form if hidden
+    } else if (event === 'SIGNED_IN' && session) {
+        console.log('User signed in via recovery');
+    }
+});
 
-                const newPassword = document.getElementById('newPassword').value;
-                if (!newPassword || newPassword.length < 6) {
-                    document.getElementById('error').textContent = 'Password must be at least 6 characters';
-                    document.getElementById('error').classList.remove('hidden');
-                    return;
-                }
+async function resetPassword() {
+    // Parse hash params
+    const hash = window.location.hash.substring(1); // Remove the #
+    const hashParams = new URLSearchParams(hash);
 
-                try {
-                    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
-                    if (error) throw error;
+    // Check if it's a recovery flow
+    if (hashParams.get('type') !== 'recovery') {
+        document.getElementById('error').textContent = 'Invalid or expired reset link';
+        document.getElementById('error').classList.remove('hidden');
+        return;
+    }
 
-                    // Clear token in profiles
-                    const { data: user, error: userError } = await supabaseClient.auth.getUser();
-                    if (!userError && user.user) {
-                        await supabaseClient.from('profiles').update({
-                            password_reset_token: null,
-                            token_expiry: null
-                        }).eq('id', user.user.id);
-                    }
+    const newPassword = document.getElementById('newPassword').value;
+    if (!newPassword || newPassword.length < 6) {
+        document.getElementById('error').textContent = 'Password must be at least 6 characters';
+        document.getElementById('error').classList.remove('hidden');
+        return;
+    }
 
-                    document.getElementById('success').textContent = 'Password updated successfully! Redirecting to login...';
-                    document.getElementById('success').classList.remove('hidden');
-                    setTimeout(() => window.location.href = '/login', 2000);
-                } catch (err) {
-                    document.getElementById('error').textContent = 'Failed to update password: ' + err.message;
-                    document.getElementById('error').classList.remove('hidden');
-                }
-            }
+    try {
+        // Confirm session is active (Supabase auto-sets from hash)
+        const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession();
+        if (sessionError || !session) {
+            throw new Error('No active session - invalid reset link');
+        }
+
+        // Update password
+        const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+        if (error) throw error;
+
+        // Optional: Clear any stored token if you were using it
+        await supabaseClient.from('profiles').update({
+            password_reset_token: null,
+            token_expiry: null
+        }).eq('id', session.user.id);
+
+        document.getElementById('success').textContent = 'Password updated successfully! Redirecting to login...';
+        document.getElementById('success').classList.remove('hidden');
+        setTimeout(() => window.location.href = '/login', 2000);
+    } catch (err) {
+        document.getElementById('error').textContent = 'Failed to update password: ' + err.message;
+        document.getElementById('error').classList.remove('hidden');
+    }
+}
             document.getElementById('submitReset').addEventListener('click', resetPassword);
         });

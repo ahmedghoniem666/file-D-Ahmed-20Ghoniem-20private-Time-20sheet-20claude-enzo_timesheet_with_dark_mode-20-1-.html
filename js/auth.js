@@ -564,7 +564,7 @@ async function initiatePasswordReset(userId) {
             const userEmail = authUser.user.email;
             console.log(`Requesting password reset email for ${userEmail}`);
 
-            // Try client-side resetPasswordForEmail
+            // Use client-side resetPasswordForEmail (auto-sends email)
             const { error: clientError } = await timeout(
                 supabase.auth.resetPasswordForEmail(userEmail, {
                     redirectTo: 'https://enzotimesheet.vercel.app/reset-password.html' // Update to your reset page URL
@@ -574,59 +574,20 @@ async function initiatePasswordReset(userId) {
 
             if (clientError) {
                 console.error('Client reset error:', JSON.stringify(clientError, null, 2));
-                // Fallback to admin generateLink
-                console.log(`Falling back to admin generateLink for ${userEmail}`);
-                const { data: linkData, error: adminError } = await timeout(
-                    supabase.auth.admin.generateLink({
-                        type: 'recovery',
-                        email: userEmail,
-                        options: {
-                            redirectTo: 'https://enzotimesheet.vercel.app/reset-password.html' // Update to your reset page URL
-                        }
-                    }),
-                    5000
-                );
-
-                if (adminError) {
-                    console.error('Admin reset error:', JSON.stringify(adminError, null, 2));
-                    throw new Error(`Failed to generate reset link: ${adminError.message}`);
-                }
-
-                console.log('Admin reset link generated:', linkData.properties.action_link);
-
-                // Store reset token in profiles
-                console.log(`Storing reset token for user ${userId}`);
-                const token = linkData.properties.action_link.split('token=')[1] || null;
-                const { error: profileError } = await supabase.from('profiles').update({
-                    password_reset_token: token,
-                    token_expiry: new Date(Date.now() + 3600 * 1000).toISOString() // 1-hour expiry
-                }).eq('id', userId);
-
-                if (profileError) {
-                    console.error('Profile update error:', JSON.stringify(profileError, null, 2));
-                    // Continue, as token storage is optional
-                }
-
-                // Log admin action
-                console.log(`Logging password reset for user ${userId}`);
-                await logAdminAction('initiate_password_reset', userId, {
-                    user_email: userEmail,
-                    reset_link: linkData.properties.action_link,
-                    method: 'admin_generateLink',
-                    timestamp: new Date().toISOString()
-                });
-            } else {
-                console.log('Client-side reset email requested successfully');
-                // Log admin action for client-side attempt
-                await logAdminAction('initiate_password_reset', userId, {
-                    user_email: userEmail,
-                    reset_link: 'client-side request',
-                    method: 'resetPasswordForEmail',
-                    timestamp: new Date().toISOString()
-                });
+                throw new Error(`Failed to request reset email: ${clientError.message}`);
             }
 
-            showToast(`Password reset email requested for ${userEmail}`);
+            console.log('Reset email requested successfully');
+
+            // Log admin action
+            await logAdminAction('initiate_password_reset', userId, {
+                user_email: userEmail,
+                reset_link: 'client-side request',
+                method: 'resetPasswordForEmail',
+                timestamp: new Date().toISOString()
+            });
+
+            showToast(`Password reset email sent to ${userEmail}`);
         } catch (err) {
             console.error('Password reset error:', JSON.stringify(err, null, 2));
             showToast(`Failed to initiate password reset: ${err.message}`);
