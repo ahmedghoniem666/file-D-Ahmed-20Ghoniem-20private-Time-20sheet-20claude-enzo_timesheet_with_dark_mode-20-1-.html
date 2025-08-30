@@ -455,7 +455,7 @@ async function viewHistoryDetails(payslipId) {
                             <th>Date</th>
                             <th>Day Off</th>
                             <th>Work Hours</th>
-                            <th>Break Hours</th>
+                            <th>Lunch Hours</th>
                             <th>Total Hours</th>
                             <th>Amount</th>
                         </tr>
@@ -521,7 +521,7 @@ async function viewPayslipDetails(id, type) {
             <p><strong>Employee:</strong> ${payslip.employee_name} (${payslip.employee_role})</p>
             <p><strong>Hourly Rate:</strong> $${(payslip.hourly_rate || 0).toFixed(2)}</p>
             <p><strong>KPIs:</strong> $${(payslip.bonus || 0).toFixed(2)}</p>
-            <p><strong>Include Breaks:</strong> ${payslip.include_breaks ? 'Yes' : 'No'}</p>
+            <p><strong>Lunches Included:</strong> ${payslip.include_breaks ? 'Yes' : 'No'}</p>
             <h4 style="margin-top: 20px;">Time Entries</h4>
             <table>
                 <thead>
@@ -529,7 +529,7 @@ async function viewPayslipDetails(id, type) {
                         <th>Date</th>
                         <th>Day Off</th>
                         <th>Work Hours</th>
-                        <th>Break Hours</th>
+                        <th>Lunch Hours</th>
                         <th>Total Hours</th>
                         <th>Amount</th>
                     </tr>
@@ -555,7 +555,7 @@ async function viewPayslipDetails(id, type) {
             </table>
             <h4 style="margin-top: 20px;">Summary</h4>
             <p><strong>Total Work Hours:</strong> ${(payslip.total_work_hours || 0).toFixed(2)}</p>
-            <p><strong>Total Break Hours:</strong> ${(payslip.total_break_hours || 0).toFixed(2)}</p>
+            <p><strong>Total Lunch Hours:</strong> ${(payslip.total_break_hours || 0).toFixed(2)}</p>
             <p><strong>Total Hours:</strong> ${(payslip.total_hours || 0).toFixed(2)}</p>
             <p><strong>Base Pay:</strong> $${(payslip.base_pay || 0).toFixed(2)}</p>
             <p><strong>Grand Total:</strong> $${(payslip.grand_total || 0).toFixed(2)}</p>
@@ -871,4 +871,5 @@ async function reopenPayslip(payslipId) {
     } finally {
         hideLoading();
     }
+
 }
