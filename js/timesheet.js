@@ -100,6 +100,17 @@ function updateLastUpdated() {
 
 function addDay(date = new Date().toISOString().split('T')[0], workHours = 0, breakHours = 1, isDayOff = false) {
     const tbody = document.getElementById('timesheetBody');
+     // Check if date already exists
+            const existingRow = Array.from(tbody.querySelectorAll('tr')).find(row => {
+                const dateInput = row.querySelector('input[type="date"]');
+                return dateInput && dateInput.value === date;
+            });
+            
+            if (existingRow) {
+                showToast('Date already exists in timesheet');
+                return;
+            }
+            
     const tr = document.createElement('tr');
     tr.innerHTML = `
         <td><input type="date" class="form-control date" value="${date}"></td>
@@ -509,7 +520,7 @@ async function viewPayslipDetails(id, type) {
             <h3>Payslip Details</h3>
             <p><strong>Employee:</strong> ${payslip.employee_name} (${payslip.employee_role})</p>
             <p><strong>Hourly Rate:</strong> $${(payslip.hourly_rate || 0).toFixed(2)}</p>
-            <p><strong>Bonus:</strong> $${(payslip.bonus || 0).toFixed(2)}</p>
+            <p><strong>KPIs:</strong> $${(payslip.bonus || 0).toFixed(2)}</p>
             <p><strong>Include Breaks:</strong> ${payslip.include_breaks ? 'Yes' : 'No'}</p>
             <h4 style="margin-top: 20px;">Time Entries</h4>
             <table>

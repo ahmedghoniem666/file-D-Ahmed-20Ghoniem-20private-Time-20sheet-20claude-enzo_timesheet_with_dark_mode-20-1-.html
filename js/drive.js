@@ -227,11 +227,7 @@ async function pickerCallback(data) {
       }
       document.getElementById('timesheetBody').innerHTML = '';
       importedData.days.forEach(day => addDay(day.date, day.workHours || 0, day.breakHours || 0, day.dayOff || false));
-      document.getElementById('employeeName').value = importedData.employeeName || '';
-      document.getElementById('employeeRole').value = importedData.employeeRole || '';
-      document.getElementById('hourlyRate').value = importedData.hourlyRate || 0;
-      document.getElementById('bonus').value = importedData.bonus || 0;
-      document.getElementById('includeBreaks').checked = importedData.includeBreaks || false;
+
       updateRowAndTotals();
       saveDraft();
       hideLoading();

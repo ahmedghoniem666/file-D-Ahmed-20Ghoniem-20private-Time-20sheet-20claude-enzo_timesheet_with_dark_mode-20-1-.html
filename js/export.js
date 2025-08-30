@@ -23,7 +23,7 @@ async function exportPdf() {
         doc.text(`Employee: ${payslip.employeeName || 'Unknown'}`, 20, 30);
         doc.text(`Role: ${payslip.employeeRole || 'Unknown'}`, 20, 40);
         doc.text(`Hourly Rate: $${(payslip.hourlyRate || 0).toFixed(2)}`, 20, 50);
-        doc.text(`Bonus: $${(payslip.bonus || 0).toFixed(2)}`, 20, 60);
+        doc.text(`KPIs: $${(payslip.bonus || 0).toFixed(2)}`, 20, 60);
         doc.text(`Include Breaks: ${payslip.includeBreaks ? 'Yes' : 'No'}`, 20, 70);
 
         let currentY = 80;
@@ -88,7 +88,7 @@ function exportCsv() {
             ['Employee', payslip.employeeName || 'Unknown'],
             ['Role', payslip.employeeRole || 'Unknown'],
             ['Hourly Rate', `$${payslip.hourlyRate?.toFixed(2) || '0.00'}`],
-            ['Bonus', `$${payslip.bonus?.toFixed(2) || '0.00'}`],
+            ['KPIs', `$${payslip.bonus?.toFixed(2) || '0.00'}`],
             ['Include Breaks', payslip.includeBreaks ? 'Yes' : 'No'],
             [],
             ['Date', 'Day Off', 'Work Hours', 'Break Hours', 'Total Hours', 'Amount']
@@ -209,11 +209,7 @@ async function handleImportJson(event) {
                 data.days.forEach(day => {
                     addDay(day.date, day.workHours || 0, day.breakHours || 0, day.dayOff || false);
                 });
-                document.getElementById('employeeName').value = data.employeeName || '';
-                document.getElementById('employeeRole').value = data.employeeRole || '';
-                document.getElementById('hourlyRate').value = data.hourlyRate || 0;
-                document.getElementById('bonus').value = data.bonus || 0;
-                document.getElementById('includeBreaks').checked = data.includeBreaks || false;
+
                 updateRowAndTotals();
                 saveDraft();
                 showToast('JSON imported successfully!');
@@ -256,11 +252,13 @@ function handleUploadInsightful(e) {
             let employeeNameIndex = -1;
             let dateIndex = -1;
             let workTimeIndex = -1;
+            let breakTimeIndex = -1;
 
             const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
             employeeNameIndex = headers.indexOf('employee name');
             dateIndex = headers.indexOf('date');
             workTimeIndex = headers.indexOf('work time [h]');
+            breakTimeIndex = headers.indexOf('break time [h]');
 
             if (dateIndex === -1 || workTimeIndex === -1) {
                 showToast('CSV must contain "Date" and "Work Time [h]" columns');
@@ -285,6 +283,7 @@ function handleUploadInsightful(e) {
 
                 const dateStr = cells[dateIndex].trim();
                 const workTimeStr = cells[workTimeIndex].trim();
+                const breakTimeStr = breakTimeIndex !== -1 && cells.length > breakTimeIndex ? cells[breakTimeIndex].trim() : '';
 
                 if (!dateStr) continue;
 
@@ -318,7 +317,12 @@ function handleUploadInsightful(e) {
                     workHours = parseFloat(workTimeStr) || 0;
                 }
 
-                addDay(formattedDate, workHours, 1.00, false);
+                let breakHours = 1.00; // Default break time
+                if (breakTimeStr) {
+                    breakHours = parseTimeStringToHours(breakTimeStr);
+                }
+
+                addDay(formattedDate, workHours, breakHours, false);
             }
 
             updateRowAndTotals();
@@ -329,6 +333,48 @@ function handleUploadInsightful(e) {
         }
     };
     reader.readAsText(file);
+}
+
+// Helper function to parse time strings like "8:16AM" to hours
+function parseTimeStringToHours(timeStr) {
+    if (!timeStr) return 0;
+    
+    // Remove any spaces and convert to uppercase for consistent parsing
+    const cleanTime = timeStr.replace(/\s+/g, '').toUpperCase();
+    
+    // Handle numeric values (already in hours)
+    if (!isNaN(cleanTime)) {
+        return parseFloat(cleanTime);
+    }
+    
+    // Handle time format like "8:16AM"
+    const timePattern = /^(\d{1,2}):(\d{2}):(\d{2})(AM|PM|)$/;
+    const match = cleanTime.match(timePattern);
+    
+    if (match) {
+        let hours = parseInt(match[1]);
+        const minutes = parseInt(match[2]);
+        const seconds = parseInt(match[3]);
+        const period = match[3];
+        
+        // Convert to 24-hour format
+        if (period === 'PM' && hours !== 12) {
+            hours += 12;
+        } else if ((period === 'AM' ||period === '') && hours === 12) {
+            hours = 0;
+        }
+        
+        return hours + (minutes / 60) + (seconds / 3600);
+    }
+    
+    // Handle colon format without AM/PM (assume 24-hour format)
+    if (cleanTime.includes(':')) {
+        const [hours, minutes] = cleanTime.split(':').map(part => parseInt(part) || 0);
+        return hours + (minutes / 60);
+    }
+    
+    console.warn('Unrecognized time format:', timeStr);
+    return 0;
 }
 
 function confirmClearAll() {
@@ -422,7 +468,7 @@ async function exportAllPayslips(format, type) {
                 currentY += 8;
                 doc.text(`Hourly Rate: $${(payslip.hourly_rate || 0).toFixed(2)}`, 20, currentY);
                 currentY += 8;
-                doc.text(`Bonus: $${(payslip.bonus || 0).toFixed(2)}`, 20, currentY);
+                doc.text(`KPIs: $${(payslip.bonus || 0).toFixed(2)}`, 20, currentY);
                 currentY += 8;
                 doc.text(`Include Breaks: ${payslip.include_breaks ? 'Yes' : 'No'}`, 20, currentY);
                 currentY += 8;
@@ -486,7 +532,7 @@ async function exportAllPayslips(format, type) {
                 currentY += 8;
                 doc.text(`Base Pay: $${(payslip.totals?.basePay || 0).toFixed(2)}`, 20, currentY);
                 currentY += 8;
-                doc.text(`Bonus: $${(payslip.bonus || 0).toFixed(2)}`, 20, currentY);
+                doc.text(`KPIs: $${(payslip.bonus || 0).toFixed(2)}`, 20, currentY);
                 currentY += 8;
                 doc.text(`Grand Total: $${(payslip.totals?.grandTotal || 0).toFixed(2)}`, 20, currentY);
                 currentY += 15;
@@ -501,7 +547,7 @@ async function exportAllPayslips(format, type) {
             showToast(`${type} payslips exported as PDF successfully!`);
 
         } else if (format === 'csv') {
-            const rows = [['Payslip ID', 'Employee', 'Role', 'Hourly Rate', 'Bonus', 'Include Breaks', 'Submission Date', 'Payment Date', 'Reference', 'Date', 'Day Off', 'Work Hours', 'Break Hours', 'Total Hours', 'Amount']];
+            const rows = [['Payslip ID', 'Employee', 'Role', 'Hourly Rate', 'KPIs', 'Include Breaks', 'Submission Date', 'Payment Date', 'Reference', 'Date', 'Day Off', 'Work Hours', 'Break Hours', 'Total Hours', 'Amount']];
             enrichedPayslips.forEach((p, index) => {
                 p.days.forEach(day => {
                     rows.push([
