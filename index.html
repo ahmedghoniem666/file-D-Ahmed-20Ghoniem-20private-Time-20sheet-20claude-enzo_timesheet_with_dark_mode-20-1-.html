@@ -81,7 +81,10 @@
                     <h3>Paid Payslips</h3>
                     <div class="value" id="userPaidPayslips">0</div>
                 </div>
-               
+                <div class="stat-card" style="background: linear-gradient(135deg, var(--warning), var(--danger));">
+                    <h3>Total Earned</h3>
+                    <div class="value" id="userTotalEarned">$0.00</div>
+                </div>
             </div>
             <div class="card">
                 <div class="card-header">
@@ -96,10 +99,18 @@
                         <label class="form-label">Employee Role</label>
                         <input type="text" id="employeeRole" class="form-control">
                     </div>
+                    <div class="form-group">
+                        <label class="form-label">Hourly Rate (USD)</label>
+                        <input type="number" id="hourlyRate" class="form-control" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bonus (USD)</label>
+                        <input type="number" id="bonus" class="form-control" step="0.01">
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="form-label" style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="includeBreaks"> Include Lunch in payment
+                        <input type="checkbox" id="includeBreaks"> Include breaks in payment
                     </label>
                 </div>
             </div>
@@ -124,6 +135,7 @@
                                 <th>Work Hours</th>
                                 <th>Break Hours</th>
                                 <th>Total Hours</th>
+                                <th>Amount</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
@@ -140,8 +152,12 @@
                     <div>
                         <strong>Total Hours:</strong> <span id="totalHours">0.00</span>
                     </div>
-                   
-               
+                    <div>
+                        <strong>Base Pay:</strong> <span id="basePay">$0.00</span>
+                    </div>
+                    <div>
+                        <strong>Grand Total:</strong> <span id="grandTotal">$0.00</span>
+                    </div>
                 </div>
             </div>
             <div class="action-buttons">
@@ -184,7 +200,6 @@
                     <h2 class="card-title">Upload Insightful Data</h2>
                 </div>
                 <div class="file-format-info">
-                    <br>
                     <h4>Supported File Formats</h4>
                     <p>You can upload CSV or Excel files with the following format:</p>
                     <ul>
@@ -200,23 +215,6 @@ Joseph,18-Aug-25,8:07
 Joseph,19-Aug-25,7:25
 Joseph,20-Aug-25,7:16</pre>
                 </div>
-                <br>
-<div style="height: 20px;"></div>
-                 <h4>⏱ How to Reformat Work Time in Excel</h4> 
-                <br>
-               <p>When you download the Time & Attendance report from Insightful, the Work Time [h] column may appear with times like 8:16AM.
-To reformat them into 8.16, follow these steps:</p>
-                <li>🔄 Replace “:” with “.” </li>
-                 <li>Open the downloaded file in Excel. </li>
-                 <li>Highlight the Work Time [h] column. </li>
-                 <li>Press Ctrl + H (Find & Replace). </li>
-                 <li>In Find what, type : </li>
-                 <li>In Replace with, type . </li>
-                 <li>Click Replace All </li>
-                 <li>Your times will now appear like this: </li>
-                 <li>8:16 → 8.16 </li>
-                 <li>7:25 → 7.25 </li>
-                
             </div>
             
             <div class="card">
@@ -457,12 +455,3 @@ To reformat them into 8.16, follow these steps:</p>
 </body>
 
 </html>
-
-
-
-
-
-
-
-
-
