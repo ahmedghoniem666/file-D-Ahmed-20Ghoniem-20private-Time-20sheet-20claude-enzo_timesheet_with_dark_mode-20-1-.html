@@ -140,8 +140,7 @@ function addWeek() {
 
 function updateRowAndTotals() {
     const includeBreaks = document.getElementById('includeBreaks').checked;
-    const rate = parseFloat(document.getElementById('hourlyRate').value) || 0;
-    const bonus = parseFloat(document.getElementById('bonus').value) || 0;
+   
     let totalWork = 0, totalBreak = 0, totalTotal = 0, basePay = 0;
     document.querySelectorAll('#timesheetBody tr').forEach(row => {
         const dayOff = row.querySelector('.dayOff').checked;
@@ -860,3 +859,4 @@ async function reopenPayslip(payslipId) {
     }
 
 }
+
