@@ -17,7 +17,9 @@ async function loadUserData() {
         console.log('Profile loaded:', profile);
         document.getElementById('employeeName').value = profile.employee_name || '';
         document.getElementById('employeeRole').value = profile.employee_role || '';
-       
+        document.getElementById('hourlyRate').value = profile.hourly_rate || 0;
+        document.getElementById('bonus').value = profile.bonus || 0;
+
         const { data: settings, error: settingsErr } = await timeout(supabase.from('user_settings').select('*').eq('user_id', currentUser).maybeSingle(), 5000);
         if (settingsErr && settingsErr.code !== 'PGRST116') {
             console.error('Settings fetch error:', settingsErr);
@@ -140,7 +142,8 @@ function addWeek() {
 
 function updateRowAndTotals() {
     const includeBreaks = document.getElementById('includeBreaks').checked;
-   
+    const rate = parseFloat(document.getElementById('hourlyRate').value) || 0;
+    const bonus = parseFloat(document.getElementById('bonus').value) || 0;
     let totalWork = 0, totalBreak = 0, totalTotal = 0, basePay = 0;
     document.querySelectorAll('#timesheetBody tr').forEach(row => {
         const dayOff = row.querySelector('.dayOff').checked;
@@ -857,6 +860,4 @@ async function reopenPayslip(payslipId) {
     } finally {
         hideLoading();
     }
-
 }
-
