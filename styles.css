@@ -261,7 +261,7 @@ tr:hover {
 
 .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(500px, 1fr));
     gap: 20px;
     margin-bottom: 25px;
 }
@@ -536,4 +536,5 @@ tr:hover {
 .badge-secondary {
     background-color: rgba(108, 117, 125, 0.2);
     color: var(--gray);
+
 }
